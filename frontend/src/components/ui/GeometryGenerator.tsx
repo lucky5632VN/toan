@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import {
   Wand2, Upload, Loader2, X, ImagePlus, FileText,
-  AlertCircle
+  AlertCircle, Eye, RefreshCw
 } from 'lucide-react';
 import api from '../../api/axios';
 
