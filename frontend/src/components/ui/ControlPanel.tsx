@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Box, Settings, Eye, PenTool } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Box, Eye, PenTool } from 'lucide-react';
 import { useGeometryStore } from '../../store/useGeometryStore';
 import { SHAPE_CONFIGS } from '../../config/shapes';
 import { CustomShapeBuilder } from './CustomShapeBuilder';
+import { useControls, button, folder } from 'leva';
 
 const ControlPanel: React.FC = () => {
   const { 
@@ -21,6 +22,44 @@ const ControlPanel: React.FC = () => {
   } = useGeometryStore();
 
   const [showBuilder, setShowBuilder] = useState(false);
+
+  // Tự động re-render Leva khi chọn khối khác
+  useControls(() => {
+    if (selectedShape === 'custom') return {} as any;
+
+    const controls: any = {};
+
+    if (selectedShape === 'prism_regular') {
+      controls.n_sides = { value: shapeParams.n_sides || 6, min: 3, max: 12, step: 1, label: 'Số cạnh đáy', onChange: (v: number) => updateParams({ n_sides: v }) };
+    }
+
+    if (selectedShape === 'pyramid_square' || selectedShape === 'pyramid_triangle') {
+      controls.base_size = { value: shapeParams.base_size || 4, min: 1, max: 10, step: 0.5, label: 'Cạnh đáy', onChange: (v: number) => updateParams({ base_size: v }) };
+    }
+
+    if (selectedShape !== 'sphere') {
+      controls.height = { value: shapeParams.height || 5, min: 1, max: 15, step: 0.5, label: 'Chiều cao (h)', onChange: (v: number) => updateParams({ height: v }) };
+    }
+
+    if (selectedShape === 'box') {
+      controls.width = { value: shapeParams.width || 4, min: 1, max: 10, step: 0.5, label: 'Chiều rộng (w)', onChange: (v: number) => updateParams({ width: v }) };
+      controls.depth = { value: shapeParams.depth || 3, min: 1, max: 10, step: 0.5, label: 'Chiều sâu (d)', onChange: (v: number) => updateParams({ depth: v }) };
+    }
+
+    if (selectedShape === 'cone' || selectedShape === 'sphere' || selectedShape === 'prism_regular') {
+      const isPrism = selectedShape === 'prism_regular';
+      controls.radius = { 
+        value: shapeParams.radius || shapeParams.base_radius || 3, 
+        min: 1, max: 8, step: 0.5, 
+        label: 'Bán kính (r)', 
+        onChange: (v: number) => updateParams(isPrism ? { base_radius: v } : { radius: v }) 
+      };
+    }
+
+    return {
+      'Tham Số Hình Học': folder(controls)
+    } as any;
+  }, [selectedShape]); // <-- Dependencies để reload khi đổi loại hình
 
   return (
     <div className="sidebar sidebar-left glass">
@@ -59,77 +98,11 @@ const ControlPanel: React.FC = () => {
         </button>
       )}
 
-      {selectedShape !== 'custom' && (
-        <>
-          <div className="panel-header" style={{ marginTop: '1rem' }}>
-            <Settings size={18} />
-            Tham Số Hình Học
-          </div>
+      {/* Đã chuyển Tham Số Hình Học sang Leva Panel (Góc phải màn hình) */}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {selectedShape === 'prism_regular' && (
-              <div>
-                <label>Số cạnh đáy ({shapeParams.n_sides})</label>
-                <input 
-                  type="range" min="3" max="12" 
-                  value={shapeParams.n_sides || 6} 
-                  onChange={(e) => updateParams({ n_sides: parseInt(e.target.value) })} 
-                />
-              </div>
-            )}
-
-            {(selectedShape === 'pyramid_square' || selectedShape === 'pyramid_triangle') && (
-              <div>
-                <label>Kích thước đáy ({shapeParams.base_size})</label>
-                <input 
-                  type="range" min="1" max="10" step="0.5"
-                  value={shapeParams.base_size || 4} 
-                  onChange={(e) => updateParams({ base_size: parseFloat(e.target.value) })} 
-                />
-              </div>
-            )}
-
-            {(selectedShape !== 'sphere') && (
-              <div>
-                <label>Chiều cao h ({shapeParams.height})</label>
-                <input 
-                  type="range" min="1" max="15" step="0.5"
-                  value={shapeParams.height || 5} 
-                  onChange={(e) => updateParams({ height: parseFloat(e.target.value) })} 
-                />
-              </div>
-            )}
-
-            {selectedShape === 'box' && (
-              <>
-                <div>
-                  <label>Chiều rộng w ({shapeParams.width})</label>
-                  <input type="range" min="1" max="10" step="0.5" value={shapeParams.width || 4} onChange={(e) => updateParams({ width: parseFloat(e.target.value) })} />
-                </div>
-                <div>
-                  <label>Chiều sâu d ({shapeParams.depth})</label>
-                  <input type="range" min="1" max="10" step="0.5" value={shapeParams.depth || 3} onChange={(e) => updateParams({ depth: parseFloat(e.target.value) })} />
-                </div>
-              </>
-            )}
-
-            {(selectedShape === 'cone' || selectedShape === 'sphere' || selectedShape === 'prism_regular') && (
-              <div>
-                <label>Bán kính r ({shapeParams.radius || shapeParams.base_radius})</label>
-                <input 
-                  type="range" min="1" max="8" step="0.5"
-                  value={shapeParams.radius || shapeParams.base_radius || 3} 
-                  onChange={(e) => updateParams(selectedShape === 'prism_regular' ? { base_radius: parseFloat(e.target.value) } : { radius: parseFloat(e.target.value) })} 
-                />
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      <div className="panel-header" style={{ marginTop: '1rem' }}>
+      <div className="panel-header" style={{ marginTop: '1.5rem' }}>
         <Eye size={18} />
-        Hiển Thị
+        Trực Quan Biểu Diễn
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
@@ -145,10 +118,11 @@ const ControlPanel: React.FC = () => {
           <input type="checkbox" checked={wireframe} onChange={toggleWireframe} />
           Khung dây (Wireframe)
         </label>
-        <div>
-          <label>Độ trong suốt ({Math.round(opacity * 100)}%)</label>
-          <input type="range" min="0.1" max="1" step="0.1" value={opacity} onChange={(e) => setOpacity(parseFloat(e.target.value))} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '0.8rem', color: '#c9d1d9' }}>Độ trong suốt</span>
+          <span style={{ fontSize: '0.8rem', color: '#8b949e' }}>{Math.round(opacity * 100)}%</span>
         </div>
+        <input type="range" min="0.1" max="1" step="0.1" value={opacity} onChange={(e) => setOpacity(parseFloat(e.target.value))} style={{ margin: 0 }} />
       </div>
 
       {showBuilder && <CustomShapeBuilder onClose={() => setShowBuilder(false)} />}
@@ -157,3 +131,4 @@ const ControlPanel: React.FC = () => {
 };
 
 export default ControlPanel;
+

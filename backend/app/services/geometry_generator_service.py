@@ -87,13 +87,13 @@ class GeometryGeneratorService:
                 logger.error(f"Không thể khởi tạo Gemini Client: {e}")
                 self.client = None
 
-        # Model chính – ưu tiên suy luận hình học chính xác
-        self.primary_model = "gemini-2.5-flash"
+        # Model chính – sử dụng bản 2.0-flash ổn định
+        self.primary_model = "gemini-2.0-flash"
 
         # Danh sách model dự phòng theo thứ tự ưu tiên (nhẹ hơn, ít quá tải hơn)
         self.fallback_models = [
             "gemini-2.0-flash",
-            "gemini-1.5-flash-latest",
+            "gemini-1.5-flash-8b",
         ]
 
     # ── Private: gọi một model cụ thể, có @retry bọc ngoài ──────────────────

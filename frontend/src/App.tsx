@@ -4,7 +4,7 @@ import CrossSectionPanel from './components/ui/CrossSectionPanel';
 import Scene from './components/canvas/Scene';
 import CoordDisplay from './components/ui/CoordDisplay';
 import PropertiesPanel from './components/ui/PropertiesPanel';
-import HandGestureOverlay from './components/gesture/HandGestureOverlay';
+
 import AITutorPanel from './components/ui/AITutorPanel';
 import GeometryGenerator from './components/ui/GeometryGenerator';
 import { useGeometryAPI } from './hooks/useGeometryAPI';
@@ -70,8 +70,7 @@ function App() {
         {/* AI Geometry Generator Modal */}
         {showGenerator && <GeometryGenerator onClose={() => setShowGenerator(false)} />}
 
-        {/* AI Gesture Tracking Overlay */}
-        <HandGestureOverlay />
+        {/* AI Gesture Tracking Overlay Removed */}
 
         {/* AI Tutor Chat Overlay */}
         <AITutorPanel />

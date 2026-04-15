@@ -4,7 +4,7 @@ import { OrbitControls, PerspectiveCamera, Environment, ContactShadows } from '@
 import OxyzAxes from './OxyzAxes';
 import SolidShape from './SolidShape';
 import CrossSection from './CrossSection';
-import GestureManager from './GestureManager';
+
 import { useGeometryStore } from '../../store/useGeometryStore';
 
 const Scene: React.FC = () => {
@@ -28,10 +28,8 @@ const Scene: React.FC = () => {
           
           {showAxes && <OxyzAxes />}
           
-          <GestureManager>
-            <SolidShape />
-            <CrossSection />
-          </GestureManager>
+          <SolidShape />
+          <CrossSection />
 
           <ContactShadows 
             position={[0, 0, 0]} 

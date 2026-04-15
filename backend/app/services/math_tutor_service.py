@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from fastapi import HTTPException
 from dotenv import load_dotenv
 
@@ -27,15 +28,16 @@ class MathTutorService:
                 logger.error(f"Không thể khởi tạo GenAI Client: {e}")
                 self.client = None
                 
-        # Thay đổi từ gemini-2.5-pro sang gemini-2.5-flash vì giới hạn Quota rác của bản Pro
-        self.model_name = "gemini-2.5-flash"
+        # Sử dụng model gemini-2.0-flash (Model ổn định trong môi trường này)
+        self.model_name = "gemini-2.0-flash"
         
         # System Instruction (Socratic Method + UI Control)
+        # ... (rest of the instruction string remains the same)
         self.system_instruction = (
             "Bạn là một chuyên gia toán học và gia sư hình học không gian 3D tận tâm. "
             "Hãy hướng dẫn học sinh từng bước tính toán tọa độ, tìm giao tuyến, hoặc chứng minh thiết diện. "
             "Không bao giờ cung cấp ngay đáp án cuối cùng. Hãy đặt câu hỏi ngược lại để học sinh tự suy nghĩ.\n\n"
-            "QUAN TRỌNG VỀ ĐIỀU KHIỂN GIAO DIỆN 3D:\n"
+            "QUAN TRỌNG VỀ ĐIỀU KHIỂN GIAO DIỆF 3D:\n"
             "NẾU học sinh yêu cầu bạn đổi hình dạng khối, cắt mặt phẳng, thay đổi tham số, hoặc tô màu mặt phẳng cắt (thiết diện), "
             "hãy đính kèm một khối code JSON ở phần cuối cùng trong câu trả lời của bạn với cú pháp chuẩn xác sau "
             "(thay đổi các giá trị cho phù hợp, chỉ xuất hiện nếu cần thực hiện lệnh):\n"
@@ -75,34 +77,42 @@ class MathTutorService:
             logger.error("Gọi API nhưng quá trình khởi tạo client GenAI đã thất bại hoặc thiếu API Key.")
             raise HTTPException(status_code=500, detail="Máy chủ chưa được cấu hình API Key cho Gemini hoặc kết nối lỗi.")
 
-        try:
-            # Biên dịch history thành định dạng types.Content của google-genai
-            formatted_history = []
-            for msg in chat_history:
-                # Loại bỏ khoảng trắng hoặc xử lý null safety
-                role = "user" if msg.get("role") == "user" else "model"
-                text_content = msg.get("content", "")
-                part = types.Part.from_text(text=text_content)
-                formatted_history.append(types.Content(role=role, parts=[part]))
+        formatted_history = []
+        for msg in chat_history:
+            role = "user" if msg.get("role") == "user" else "model"
+            text_content = msg.get("content", "")
+            part = types.Part.from_text(text=text_content)
+            formatted_history.append(types.Content(role=role, parts=[part]))
 
-            config = types.GenerateContentConfig(
-                system_instruction=self.system_instruction,
-                temperature=0.7,
-            )
+        config = types.GenerateContentConfig(
+            system_instruction=self.system_instruction,
+            temperature=0.7,
+        )
 
-            # Khởi tạo phiên trò chuyện (chat session)
-            chat = self.client.chats.create(
-                model=self.model_name,
-                history=formatted_history,
-                config=config
-            )
-            
-            # Gửi tin nhắn mới nhất
-            response = chat.send_message(user_message)
-            return response.text
-            
-        except Exception as e:
-            logger.error(f"Lỗi khi kết nối với Gemini API: {e}")
-            raise HTTPException(status_code=500, detail=f"Hệ thống bị lỗi khi kết nối tới AI Tutor: {str(e)}")
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                chat = self.client.chats.create(
+                    model=self.model_name,
+                    history=formatted_history,
+                    config=config
+                )
+                response = chat.send_message(user_message)
+                return response.text
+                
+            except Exception as e:
+                error_msg = str(e)
+                # Bắt cả lỗi 429 (Rate Limit) và 503 (Model quá tải/Unvailable)
+                if any(x in error_msg for x in ["429", "503", "exhausted", "demand", "unavailable"]):
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Gemini API busy (429/503). Retrying in {attempt + 1}s...")
+                        time.sleep(attempt + 1)
+                        continue
+                    else:
+                        return "Gia sư AI hiện đang nhận được quá nhiều yêu cầu cùng lúc (Hệ thống đang quá tải). Vui lòng chờ vài giây rồi đặt câu hỏi tiếp nhé!"
+                
+                logger.error(f"Lỗi khi kết nối với Gemini API: {e}")
+                raise HTTPException(status_code=500, detail=f"Hệ thống bị lỗi khi kết nối tới AI Tutor: {str(e)}")
+
 
 math_tutor_service = MathTutorService()

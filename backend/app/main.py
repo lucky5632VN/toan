@@ -1,12 +1,12 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routers import geometry, cross_section, ai, chat, geometry_generator
+from .routers import geometry, cross_section, ai, chat, geometry_generator, quiz
 
 app = FastAPI(
-    title="Hệ Sinh Thái STEM Toán 3D",
-    description="Backend API cho mô hình hình học 3D tương tác",
-    version="1.0.0",
+    title="SPATIAL MIND 3D",
+    description="Backend API cho hệ sinh thái hình học tương tác tích hợp AI",
+    version="1.1.0",
 )
 
 # Đọc allowed origins từ biến môi trường (production) hoặc dùng localhost (dev)
@@ -34,6 +34,7 @@ app.include_router(cross_section.router, prefix="/api/cross-section", tags=["Thi
 app.include_router(ai.router, prefix="/api/ai", tags=["Gia sư AI"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chatbot Gia sư"])
 app.include_router(geometry_generator.router, prefix="/api/v1/geometry", tags=["AI Geometry Generator"])
+app.include_router(quiz.router, prefix="/api/v1/quiz", tags=["AI Auto Quiz Generation"])
 
 
 @app.get("/")
