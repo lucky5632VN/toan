@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { KeyboardEvent } from 'react';
-import { MessageSquare, Send, User, Bot, Loader2, X, Trash2, ChevronDown } from 'lucide-react';
+import { MessageSquare, Send, User, Bot, Loader2, X, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGeometryStore } from '../../store/useGeometryStore';
 import { parseMarkdown } from '../../utils/markdown';
@@ -60,7 +60,7 @@ const AITutorPanel: React.FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const { 
-    selectedShape, shapeParams, shapeData,
+    selectedShape, shapeParams,
     setSelectedShape, updateParams, setPlane, setCrossSectionColor, setShapeData
   } = useGeometryStore();
 
