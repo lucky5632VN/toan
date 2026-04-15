@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Box, Eye, PenTool } from 'lucide-react';
 import { useGeometryStore } from '../../store/useGeometryStore';
 import { SHAPE_CONFIGS } from '../../config/shapes';
 import { CustomShapeBuilder } from './CustomShapeBuilder';
-import { useControls, button, folder } from 'leva';
+import { useControls, folder } from 'leva';
 
 const ControlPanel: React.FC = () => {
   const { 
