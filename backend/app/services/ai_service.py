@@ -1,18 +1,12 @@
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY")
-
-if API_KEY:
-    genai.configure(api_key=API_KEY)
-    # Using gemini-1.5-flash-latest as requested
-    model = genai.GenerativeModel('gemini-1.5-flash')
-else:
-    model = None
 
 SYSTEM_PROMPT = """
 Bạn là một Gia sư Toán học STEM chuyên nghiệp, tập trung vào Hình học không gian lớp 11.
@@ -29,15 +23,19 @@ Dữ liệu hình khối sẽ được gửi kèm trong tin nhắn. Hãy dựa v
 
 class AIService:
     def __init__(self):
-        self.chat_session = None
-        if model:
-            self.chat_session = model.start_chat(history=[])
+        self.client = None
+        if API_KEY:
+            try:
+                self.client = genai.Client(api_key=API_KEY)
+            except Exception:
+                self.client = None
+        
+        self.model_name = "gemini-1.5-flash"
 
     async def get_response(self, message: str, context: Dict[str, Any]) -> str:
-        if not API_KEY or not model:
+        if not self.client:
             return "Xin lỗi, Gemini API Key chưa được cấu hình. Tôi đang chạy ở chế độ giả lập: 'Đây là một hình khối rất đẹp!'"
 
-        # Cấu trúc lại prompt với ngữ cảnh hình học
         shape_info = f"""
 [THÔNG TIN HÌNH KHỐI HIỆN TẠI]
 - Loại hình: {context.get('shape_type')}
@@ -47,7 +45,11 @@ class AIService:
         full_prompt = f"{SYSTEM_PROMPT}\n{shape_info}\n\nHọc sinh hỏi: {message}"
 
         try:
-            response = self.chat_session.send_message(full_prompt)
+            # Dùng trực tiếp generate_content thay vì chat session cho AI Service cũ
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=full_prompt
+            )
             return response.text
         except Exception as e:
             return f"Có lỗi xảy ra khi kết nối với Gemini: {str(e)}"
