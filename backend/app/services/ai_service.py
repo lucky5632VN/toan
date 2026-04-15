@@ -30,7 +30,7 @@ class AIService:
             except Exception:
                 self.client = None
         
-        self.model_name = "gemini-1.5-flash"
+        self.model_name = "gemini-2.0-flash"
 
     async def get_response(self, message: str, context: Dict[str, Any]) -> str:
         if not self.client:

@@ -65,8 +65,6 @@ class QuizService:
 
         for attempt in range(max_retries):
             try:
-                # Dùng run_in_executor nếu SDK bloocking hoặc gọi trực tiếp nếu hỗ trợ async (Client genai thường sync)
-                # Ở đây chúng ta bọc try-except cho 429
                 response = self.client.models.generate_content(
                     model=self.model_name,
                     contents=prompt,
@@ -77,25 +75,34 @@ class QuizService:
                         temperature=0.7
                     )
                 )
-                result = json.loads(response.text)
-                # Lưu vào cache
+                
+                # Làm sạch JSON (đề phòng model vẫn trả về markdown ```json)
+                raw_text = response.text
+                import re
+                cleaned = re.sub(r"```(?:json)?\s*", "", raw_text)
+                cleaned = cleaned.replace("```", "").strip()
+                
+                result = json.loads(cleaned)
                 self._quiz_cache[cache_key] = result
                 return result
+                
             except Exception as e:
                 error_msg = str(e)
-                # Bắt cả lỗi 429 (Rate Limit) và 503 (Model quá tải/Unvailable)
-                if any(x in error_msg for x in ["429", "503", "exhausted", "demand", "unavailable"]):
+                self.logger.error(f"Attempt {attempt+1} failed: {error_msg}")
+                
+                # Nếu là lỗi có thể thử lại (429, 503) và chưa hết số lần thử
+                if any(x in error_msg.lower() for x in ["429", "503", "exhausted", "demand", "unavailable"]):
                     if attempt < max_retries - 1:
                         await asyncio.sleep(retry_delay * (attempt + 1))
                         continue
-                    else:
-                        return {
-                            "question": "Hệ thống AI đang bận (Tăng cường độ ổn định). Bạn hãy thử lại sau vài giây.",
-                            "options": ["A. Chờ đợi", "B. Thử lại ngay", "C. Xem hình", "D. Đã hiểu"],
-                            "correct_answer": "D. Đã hiểu",
-                            "explanation": "Do bạn dùng gói Gemini Free, thỉnh thoảng Google sẽ giới hạn số lượt truy vấn. Đừng lo lắng, hãy thử lại nhé!"
-                        }
-                raise Exception(f"Lỗi khi gọi Gemini sinh bài tập: {error_msg}")
+                
+                # Nếu hết lần thử hoặc là lỗi khác, trả về fallback thay vì crash 500
+                return {
+                    "question": "Hệ thống AI đang được bảo trì hoặc quá tải. Hãy thử lại sau vài giây.",
+                    "options": ["A. Chờ đợi", "B. Thử lại", "C. Quay lại sau", "D. Đã hiểu"],
+                    "correct_answer": "D. Đã hiểu",
+                    "explanation": "Có thể kết nối mạng hoặc dịch vụ AI đang gặp gián đoạn tạm thời. Đừng lo lắng, hình học 3D của bạn vẫn an toàn!"
+                }
 
 quiz_service = QuizService()
 
