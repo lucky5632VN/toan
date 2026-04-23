@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Eye, PenTool } from 'lucide-react';
+import { Box, Eye, PenTool, MousePointer2 } from 'lucide-react';
 import { useGeometryStore } from '../../store/useGeometryStore';
 import { SHAPE_CONFIGS } from '../../config/shapes';
 import { CustomShapeBuilder } from './CustomShapeBuilder';
@@ -18,12 +18,15 @@ const ControlPanel: React.FC = () => {
     opacity,
     setOpacity,
     wireframe,
-    toggleWireframe
+    toggleWireframe,
+    isDrawingMode,
+    setDrawingMode,
+    clearDrawingPoints
   } = useGeometryStore();
 
   const [showBuilder, setShowBuilder] = useState(false);
 
-  // Tự động re-render Leva khi chọn khối khác
+  // Auto-render Leva when shape changes
   useControls(() => {
     if (selectedShape === 'custom') return {} as any;
 
@@ -59,7 +62,7 @@ const ControlPanel: React.FC = () => {
     return {
       'Tham Số Hình Học': folder(controls)
     } as any;
-  }, [selectedShape]); // <-- Dependencies để reload khi đổi loại hình
+  }, [selectedShape]);
 
   return (
     <div className="sidebar sidebar-left glass">
@@ -78,6 +81,7 @@ const ControlPanel: React.FC = () => {
             if (config) updateParams(config.defaultParams);
           }
         }}
+        style={{ marginBottom: '0.8rem' }}
       >
         {SHAPE_CONFIGS.map(shape => (
           <option key={shape.id} value={shape.id}>{shape.label}</option>
@@ -85,20 +89,41 @@ const ControlPanel: React.FC = () => {
         <option value="custom">Hệ Khối Tuỳ Chỉnh (Lõi Toán)...</option>
       </select>
 
-      {selectedShape === 'custom' && (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         <button 
-          onClick={() => setShowBuilder(true)} 
+          onClick={() => {
+            const newMode = !isDrawingMode;
+            setDrawingMode(newMode);
+            if (newMode) {
+              setSelectedShape('custom');
+              clearDrawingPoints();
+            }
+          }} 
           style={{
-            marginTop: '0.6rem', padding: '0.6rem', background: 'rgba(88,166,255,0.1)', color: '#58a6ff',
-            border: '1px dashed #58a6ff', borderRadius: '8px', cursor: 'pointer', textAlign: 'center',
+            padding: '0.6rem', 
+            background: isDrawingMode ? 'rgba(88,166,255,0.2)' : 'rgba(255,255,255,0.05)', 
+            color: isDrawingMode ? '#58a6ff' : '#c9d1d9',
+            border: isDrawingMode ? '1px solid #58a6ff' : '1px solid #30363d', 
+            borderRadius: '8px', cursor: 'pointer', textAlign: 'center',
             display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.4rem', fontWeight: 600, fontSize: '0.8rem'
           }}
         >
-          <PenTool size={14} /> Điền Lưới Ma Trận bằng tay
+          <MousePointer2 size={14} /> {isDrawingMode ? 'Đang Vẽ Chuột...' : 'Vẽ Hình Bằng Chuột'}
         </button>
-      )}
 
-      {/* Đã chuyển Tham Số Hình Học sang Leva Panel (Góc phải màn hình) */}
+        {selectedShape === 'custom' && !isDrawingMode && (
+          <button 
+            onClick={() => setShowBuilder(true)} 
+            style={{
+              padding: '0.6rem', background: 'rgba(88,166,255,0.1)', color: '#58a6ff',
+              border: '1px dashed #58a6ff', borderRadius: '8px', cursor: 'pointer', textAlign: 'center',
+              display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.4rem', fontWeight: 600, fontSize: '0.8rem'
+            }}
+          >
+            <PenTool size={14} /> Điền Lưới Ma Trận
+          </button>
+        )}
+      </div>
 
       <div className="panel-header" style={{ marginTop: '1.5rem' }}>
         <Eye size={18} />
@@ -131,4 +156,3 @@ const ControlPanel: React.FC = () => {
 };
 
 export default ControlPanel;
-

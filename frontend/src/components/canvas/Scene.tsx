@@ -4,14 +4,26 @@ import { OrbitControls, PerspectiveCamera, Environment, ContactShadows } from '@
 import OxyzAxes from './OxyzAxes';
 import SolidShape from './SolidShape';
 import CrossSection from './CrossSection';
+import MouseDrawingOverlay from './MouseDrawingOverlay';
 
 import { useGeometryStore } from '../../store/useGeometryStore';
 
 const Scene: React.FC = () => {
-  const { showAxes } = useGeometryStore();
+  const { showAxes, isDrawingMode } = useGeometryStore();
 
   return (
     <div className="canvas-container">
+      {isDrawingMode && (
+        <div style={{
+          position: 'absolute', top: '2rem', left: '50%', transform: 'translateX(-50%)', zIndex: 1000,
+          background: 'rgba(0,0,0,0.6)', color: '#7ee787', border: '1px solid #7ee787',
+          padding: '0.6rem 1.2rem', borderRadius: '30px', fontWeight: 600, fontSize: '0.85rem',
+          whiteSpace: 'nowrap', backdropFilter: 'blur(4px)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+        }}>
+          ✨ Giữ phím SHIFT + Kéo chuột trái để vẽ
+        </div>
+      )}
+      
       <Canvas shadows>
         <Suspense fallback={null}>
           <PerspectiveCamera makeDefault position={[10, -15, 12]} up={[0, 0, 1]} fov={50} />
@@ -30,6 +42,7 @@ const Scene: React.FC = () => {
           
           <SolidShape />
           <CrossSection />
+          <MouseDrawingOverlay />
 
           <ContactShadows 
             position={[0, 0, 0]} 

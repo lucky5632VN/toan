@@ -20,13 +20,16 @@ export const useGeometryAPI = () => {
       if (selectedShape === 'custom') return;
       setLoading(true);
       setError(null);
+      console.log('Fetching shape:', selectedShape, shapeParams);
       try {
         const response = await api.post('/api/geometry/generate', {
           shape_type: selectedShape,
           params: shapeParams
         });
+        console.log('Shape data received:', response.data);
         setShapeData(response.data);
       } catch (err: any) {
+        console.error('Error fetching shape:', err);
         setError(err.response?.data?.detail || 'Lỗi khi tạo hình khối');
       } finally {
         setLoading(false);

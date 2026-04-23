@@ -22,10 +22,23 @@ interface GeometryState {
   isComputingSection: boolean;
 
   // UI State
+  currentTab: 'geometry' | 'graphing' | 'theory' | 'quiz';
   showAxes: boolean;
   showLabels: boolean;
   opacity: number;
   wireframe: boolean;
+  isDrawingMode: boolean;
+  drawingPoints: [number, number, number][];
+
+  // Graphing State
+  expressions: Array<{
+    id: string;
+    formula: string;
+    color: string;
+    visible: boolean;
+  }>;
+  graphVariables: Record<string, number>;
+  x0: number; // For tangent line exploration
 
   // Actions
   setSelectedShape: (type: ShapeType) => void;
@@ -39,14 +52,26 @@ interface GeometryState {
   setCrossSectionColor: (color: string) => void;
   setComputingSection: (computing: boolean) => void;
   
+  setTab: (tab: 'geometry' | 'graphing' | 'theory' | 'quiz') => void;
   toggleAxes: () => void;
   toggleLabels: () => void;
   setOpacity: (opacity: number) => void;
   toggleWireframe: () => void;
+  setDrawingMode: (mode: boolean) => void;
+  addDrawingPoint: (point: [number, number, number]) => void;
+  clearDrawingPoints: () => void;
+  
+  // Graphing Actions
+  addExpression: (formula?: string) => void;
+  removeExpression: (id: string) => void;
+  updateExpression: (id: string, updates: any) => void;
+  setExpressions: (exps: any[]) => void;
+  updateVariable: (name: string, val: number) => void;
+  setX0: (val: number) => void;
 }
 
 export const useGeometryStore = create<GeometryState>((set) => ({
-  // Default State
+  // ... existing state ...
   selectedShape: 'pyramid_square',
   shapeParams: { base_size: 4, height: 5 },
   shapeData: null,
@@ -61,10 +86,20 @@ export const useGeometryStore = create<GeometryState>((set) => ({
   crossSectionColor: '#ffeb3b',
   isComputingSection: false,
 
+  currentTab: 'geometry',
   showAxes: true,
   showLabels: true,
   opacity: 0.6,
   wireframe: false,
+  isDrawingMode: false,
+  drawingPoints: [],
+
+  expressions: [
+    { id: '1', formula: 'x^2', color: '#58a6ff', visible: true },
+    { id: '2', formula: 'sin(x)', color: '#ff7b72', visible: true }
+  ],
+  graphVariables: { a: 1, b: 0, c: 0 },
+  x0: 0,
 
   // Actions
   setSelectedShape: (type) => set({ selectedShape: type }),
@@ -82,8 +117,37 @@ export const useGeometryStore = create<GeometryState>((set) => ({
   setCrossSectionColor: (color) => set({ crossSectionColor: color }),
   setComputingSection: (computing) => set({ isComputingSection: computing }),
 
+  setTab: (tab) => set({ currentTab: tab }),
   toggleAxes: () => set((state) => ({ showAxes: !state.showAxes })),
   toggleLabels: () => set((state) => ({ showLabels: !state.showLabels })),
   setOpacity: (opacity) => set({ opacity }),
-  toggleWireframe: () => set((state) => ({ wireframe: !state.wireframe }))
+  toggleWireframe: () => set((state) => ({ wireframe: !state.wireframe })),
+  setDrawingMode: (mode) => set({ isDrawingMode: mode }),
+  addDrawingPoint: (point) => set((state) => ({ 
+    drawingPoints: [...state.drawingPoints, point] 
+  })),
+  clearDrawingPoints: () => set({ drawingPoints: [] }),
+
+  addExpression: (formula = '') => set((state) => ({
+    expressions: [
+      ...state.expressions, 
+      { 
+        id: Math.random().toString(36).substr(2, 9), 
+        formula, 
+        color: ['#58a6ff', '#ff7b72', '#7ee787', '#d2a8ff', '#ffa657'][state.expressions.length % 5], 
+        visible: true 
+      }
+    ]
+  })),
+  removeExpression: (id) => set((state) => ({
+    expressions: state.expressions.filter(e => e.id !== id)
+  })),
+  updateExpression: (id, updates) => set((state) => ({
+    expressions: state.expressions.map(e => e.id === id ? { ...e, ...updates } : e)
+  })),
+  setExpressions: (exps) => set({ expressions: exps }),
+  updateVariable: (name, val) => set((state) => ({
+    graphVariables: { ...state.graphVariables, [name]: val }
+  })),
+  setX0: (val) => set({ x0: val }),
 }));

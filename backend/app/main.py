@@ -23,11 +23,17 @@ ALLOWED_ORIGINS = (
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def log_requests(request, call_next):
+    print(f"DEBUG: {request.method} {request.url.path}")
+    response = await call_next(request)
+    return response
 
 app.include_router(geometry.router, prefix="/api/geometry", tags=["Hình học 3D"])
 app.include_router(cross_section.router, prefix="/api/cross-section", tags=["Thiết diện"])
