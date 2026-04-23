@@ -71,6 +71,133 @@ def _is_retryable(exc: Exception) -> bool:
     )
 
 
+
+# ─── Local Geometry Fallback (không cần API) ─────────────────────────────────
+
+def _extract_number(text: str, keywords: list) -> float | None:
+    """Tìm số sau các từ khoá trong văn bản."""
+    for kw in keywords:
+        idx = text.lower().find(kw.lower())
+        if idx == -1:
+            continue
+        # Lấy phần text sau từ khoá, tìm số đầu tiên
+        rest = text[idx + len(kw):]
+        m = re.search(r"[\d]+(?:[.,]\d+)?", rest)
+        if m:
+            return float(m.group().replace(",", "."))
+    return None
+
+
+def _build_pyramid(a: float, h: float) -> dict:
+    """Hình chóp tứ giác đều S.ABCD: cạnh đáy a, chiều cao h."""
+    hf = a / 2
+    verts = [
+        [-hf, -hf, 0],   # 0: A
+        [ hf, -hf, 0],   # 1: B
+        [ hf,  hf, 0],   # 2: C
+        [-hf,  hf, 0],   # 3: D
+        [  0,   0, h],   # 4: S
+    ]
+    visible_edges = [[4,0],[4,1],[4,2],[4,3],[0,1],[1,2]]
+    hidden_edges  = [[2,3],[3,0]]
+    faces = [[0,1,2,3],[0,1,4],[1,2,4],[2,3,4],[3,0,4]]
+    labels = ["A","B","C","D","S"]
+    return {"vertices": verts, "faces": faces,
+            "visible_edges": visible_edges, "hidden_edges": hidden_edges,
+            "vertex_labels": labels}
+
+
+def _build_triangular_pyramid(a: float, h: float) -> dict:
+    """Hình chóp tam giác đều S.ABC: cạnh đáy a, chiều cao h."""
+    import math
+    r = a / math.sqrt(3)  # bán kính đường tròn ngoại tiếp tam giác đều
+    verts = [
+        [r * math.cos(math.radians(90)),  r * math.sin(math.radians(90)),  0],   # 0: A
+        [r * math.cos(math.radians(210)), r * math.sin(math.radians(210)), 0],   # 1: B
+        [r * math.cos(math.radians(330)), r * math.sin(math.radians(330)), 0],   # 2: C
+        [0, 0, h],                                                                # 3: S
+    ]
+    visible_edges = [[3,0],[3,1],[3,2],[0,1],[1,2]]
+    hidden_edges  = [[2,0]]
+    faces = [[0,1,2],[0,1,3],[1,2,3],[2,0,3]]
+    labels = ["A","B","C","S"]
+    return {"vertices": verts, "faces": faces,
+            "visible_edges": visible_edges, "hidden_edges": hidden_edges,
+            "vertex_labels": labels}
+
+
+def _build_prism(a: float, h: float) -> dict:
+    """Lăng trụ tứ giác đều ABCD.A'B'C'D': cạnh đáy a, chiều cao h."""
+    hf = a / 2
+    verts = [
+        [-hf, -hf, 0],  # 0: A
+        [ hf, -hf, 0],  # 1: B
+        [ hf,  hf, 0],  # 2: C
+        [-hf,  hf, 0],  # 3: D
+        [-hf, -hf, h],  # 4: A'
+        [ hf, -hf, h],  # 5: B'
+        [ hf,  hf, h],  # 6: C'
+        [-hf,  hf, h],  # 7: D'
+    ]
+    visible_edges = [[0,1],[1,2],[0,4],[1,5],[2,6],[4,5],[5,6],[6,7],[4,7]]
+    hidden_edges  = [[2,3],[3,0],[3,7]]
+    faces = [[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]
+    labels = ["A","B","C","D","A'","B'","C'","D'"]
+    return {"vertices": verts, "faces": faces,
+            "visible_edges": visible_edges, "hidden_edges": hidden_edges,
+            "vertex_labels": labels}
+
+
+def _build_triangular_prism(a: float, h: float) -> dict:
+    """Lăng trụ tam giác đều ABC.A'B'C': cạnh đáy a, chiều cao h."""
+    import math
+    r = a / math.sqrt(3)
+    base = [
+        [r * math.cos(math.radians(90)),  r * math.sin(math.radians(90)),  0],
+        [r * math.cos(math.radians(210)), r * math.sin(math.radians(210)), 0],
+        [r * math.cos(math.radians(330)), r * math.sin(math.radians(330)), 0],
+    ]
+    verts = base + [[x, y, h] for x, y, _ in base]
+    visible_edges = [[0,1],[1,2],[0,3],[1,4],[2,5],[3,4],[4,5]]
+    hidden_edges  = [[2,0],[5,3]]
+    faces = [[0,1,2],[3,4,5],[0,1,4,3],[1,2,5,4],[2,0,3,5]]
+    labels = ["A","B","C","A'","B'","C'"]
+    return {"vertices": verts, "faces": faces,
+            "visible_edges": visible_edges, "hidden_edges": hidden_edges,
+            "vertex_labels": labels}
+
+
+def _local_geometry_fallback(text: str) -> dict:
+    """
+    Giải hình học cục bộ: phân tích văn bản tiếng Việt để nhận dạng hình
+    và tạo tọa độ 3D mà không cần Gemini API.
+    """
+    t = (text or "").lower()
+
+    # Nhận dạng loại hình
+    is_tam_giac = "tam giác" in t or "s.abc" in t
+    is_chop = "chóp" in t or "chop" in t
+    is_lang_tru = "lăng trụ" in t or "lang tru" in t or "lăng trụ" in t
+
+    # Trích xuất kích thước
+    a = _extract_number(text, ["cạnh", "canh", "a =", "a=", "cạnh đáy"]) or 6.0
+    h = _extract_number(text, ["chiều cao", "chieu cao", "h =", "h=", "SA ="]) or 4.0
+
+    logger.info(f"[LocalFallback] shape={'chop' if is_chop else 'lang_tru'} tam_giac={is_tam_giac} a={a} h={h}")
+
+    if is_chop:
+        if is_tam_giac:
+            return _build_triangular_pyramid(a, h)
+        return _build_pyramid(a, h)
+    elif is_lang_tru:
+        if is_tam_giac:
+            return _build_triangular_prism(a, h)
+        return _build_prism(a, h)
+    else:
+        # Mặc định: hình chóp tứ giác
+        return _build_pyramid(a, h)
+
+
 # ─── Service ─────────────────────────────────────────────────────────────────
 
 class GeometryGeneratorService:
@@ -187,13 +314,10 @@ class GeometryGeneratorService:
                     logger.warning(f"✗ Model dự phòng [{fallback}] cũng thất bại: {fb_error}")
                     last_error = fb_error
 
-        # ── Tầng 3: Tất cả model đều thất bại ────────────────────────────────
+        # ── Tầng 3: Tất cả model đều thất bại → Dùng bộ giải cục bộ ──────────
         if raw_text is None:
-            logger.error(f"Tất cả models đều thất bại. Lỗi cuối: {last_error}")
-            raise HTTPException(
-                status_code=503,
-                detail="Hệ thống AI đang quá tải, vui lòng thử lại sau vài phút.",
-            )
+            logger.warning(f"Tất cả models đều thất bại. Dùng bộ giải hình học cục bộ. Lỗi: {last_error}")
+            return _local_geometry_fallback(text)
 
         # ── Parse & validate JSON response ────────────────────────────────────
         # Làm sạch markdown nếu model vẫn cố gắng wrap code block
