@@ -212,6 +212,48 @@ def _build_triangular_prism(a: float, h: float) -> dict:
             "vertex_labels": labels}
 
 
+def _build_cone(r: float, h: float) -> dict:
+    """Hình nón: bán kính r, chiều cao h. Mô phỏng bằng đa giác 32 cạnh."""
+    import math
+    verts = []
+    N = 32
+    for i in range(N):
+        angle = (2 * math.pi * i) / N
+        verts.append([r * math.cos(angle), r * math.sin(angle), 0])
+    verts.append([0, 0, h]) # Đỉnh S (index N)
+    
+    visible_edges = []
+    for i in range(N):
+        visible_edges.append([i, (i + 1) % N]) # Đường tròn đáy
+        if i % 8 == 0: # Chỉ vẽ vài đường sinh cho đỡ rối
+            visible_edges.append([i, N])
+            
+    faces = [list(range(N)), [0, N, 8], [8, N, 16], [16, N, 24], [24, N, 0]] # Xấp xỉ
+    return {"vertices": verts, "faces": faces, "visible_edges": visible_edges, "hidden_edges": [], "vertex_labels": ["O", "S"]}
+
+
+def _build_sphere(r: float) -> dict:
+    """Hình cầu: bán kính r. Mô phỏng bằng 3 vòng tròn chính."""
+    import math
+    verts = []
+    N = 24
+    # Vòng tròn ngang
+    for i in range(N):
+        angle = (2 * math.pi * i) / N
+        verts.append([r * math.cos(angle), r * math.sin(angle), 0])
+    # Vòng dọc 1
+    for i in range(N):
+        angle = (2 * math.pi * i) / N
+        verts.append([r * math.cos(angle), 0, r * math.sin(angle)])
+        
+    visible_edges = []
+    for i in range(N):
+        visible_edges.append([i, (i + 1) % N])
+        visible_edges.append([N + i, N + ((i + 1) % N)])
+        
+    return {"vertices": verts, "faces": [], "visible_edges": visible_edges, "hidden_edges": [], "vertex_labels": ["O"]}
+
+
 def _local_geometry_fallback(text: str) -> dict:
     """
     Giải hình học cục bộ: phân tích văn bản tiếng Việt để nhận dạng hình
@@ -226,9 +268,10 @@ def _local_geometry_fallback(text: str) -> dict:
 
     is_chop = "chóp" in t or "chop" in t
     is_lang_tru = "lăng trụ" in t or "lang tru" in t
+    is_non = "nón" in t or "cone" in t
+    is_cau = "cầu" in t or "sphere" in t
 
     # ── Phát hiện SA⊥(ABCD) — hình chóp vuông ────────────────────────────────
-    # Các pattern: "SA⊥(ABCD)", "SA vuông góc", "SA_|_(ABCD)", "SA⊥ABCD"
     is_right_angle_sa = bool(
         re.search(r'sa\s*[⊥_]\s*[\(\[]?[abcd]', t) or
         re.search(r'sa\s+vuông\s+góc', t) or
@@ -236,7 +279,7 @@ def _local_geometry_fallback(text: str) -> dict:
     )
 
     # ── Trích xuất kích thước ─────────────────────────────────────────────────
-    a = _extract_number(text, ["cạnh", "canh", "a =", "a=", "cạnh đáy"]) or 6.0
+    a = _extract_number(text, ["cạnh", "canh", "a =", "a=", "cạnh đáy", "bán kính", "r ="]) or 6.0
 
     # SA=số → dùng làm chiều cao; SA=a → chiều cao bằng cạnh đáy
     sa_match = re.search(r'sa\s*=\s*([a-z0-9]+(?:[.,]\d+)?)', t)
@@ -245,34 +288,30 @@ def _local_geometry_fallback(text: str) -> dict:
         try:
             h = float(raw.replace(",", "."))
         except ValueError:
-            h = a   # SA=a (chữ a) → chiều cao = cạnh đáy
+            h = a
     else:
         h = _extract_number(text, ["chiều cao", "chieu cao", "h =", "h="]) or a
 
     logger.info(
         f"[LocalFallback] text='{text[:60]}' "
-        f"base_verts={base_vertex_count} is_tam_giac={is_tam_giac} "
-        f"is_chop={is_chop} is_lang_tru={is_lang_tru} "
-        f"is_right_sa={is_right_angle_sa} a={a} h={h}"
+        f"is_chop={is_chop} is_lang_tru={is_lang_tru} is_non={is_non} is_cau={is_cau} a={a} h={h}"
     )
 
+    if is_cau:
+        return _build_sphere(a/2)
+    if is_non:
+        return _build_cone(a/2, h)
     if is_chop:
         if is_right_angle_sa:
-            # Hình chóp vuông: S ngay trên A
-            if is_tam_giac:
-                return _build_right_triangular_pyramid(a, h)
+            if is_tam_giac: return _build_right_triangular_pyramid(a, h)
             return _build_right_pyramid(a, h)
-        # Hình chóp đều: S trên tâm
-        if is_tam_giac:
-            return _build_triangular_pyramid(a, h)
+        if is_tam_giac: return _build_triangular_pyramid(a, h)
         return _build_pyramid(a, h)
-    elif is_lang_tru:
-        if is_tam_giac:
-            return _build_triangular_prism(a, h)
+    if is_lang_tru:
+        if is_tam_giac: return _build_triangular_prism(a, h)
         return _build_prism(a, h)
-    else:
-        # Mặc định: hình chóp tứ giác đều
-        return _build_pyramid(a, h)
+    
+    return _build_pyramid(a, h)
 
 
 

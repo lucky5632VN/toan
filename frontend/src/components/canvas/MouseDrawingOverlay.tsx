@@ -4,7 +4,16 @@ import * as THREE from 'three';
 import { Line, Html } from '@react-three/drei';
 
 const MouseDrawingOverlay: React.FC = () => {
-  const { isDrawingMode, drawingPoints, addDrawingPoint, setShapeData, setDrawingMode, setSelectedShape } = useGeometryStore();
+  const { 
+    isDrawingMode, 
+    drawingPoints, 
+    addDrawingPoint, 
+    undoDrawingPoint,
+    clearDrawingPoints,
+    setShapeData, 
+    setDrawingMode, 
+    setSelectedShape 
+  } = useGeometryStore();
   const [isDragging, setIsDragging] = useState(false);
 
   if (!isDrawingMode) return null;
@@ -123,16 +132,39 @@ const MouseDrawingOverlay: React.FC = () => {
       )}
 
       {/* Finalize UI */}
-      {drawingPoints.length >= 3 && (
+      {drawingPoints.length > 0 && (
         <Html position={[0, 0, 5]} center>
-          <div style={{ 
-            background: 'rgba(35, 134, 54, 0.9)', color: 'white', 
-            padding: '0.5rem 1rem', borderRadius: '8px', 
-            cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
-            whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-          }}
-          onClick={finalizeShape}>
-            Xác nhận tạo hình ({drawingPoints.length} điểm)
+          <div style={{ display: 'flex', gap: '0.8rem' }}>
+            <div style={{ 
+              background: 'rgba(35, 134, 54, 0.9)', color: 'white', 
+              padding: '0.5rem 1rem', borderRadius: '8px', 
+              cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+              whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              display: drawingPoints.length >= 3 ? 'block' : 'none'
+            }}
+            onClick={finalizeShape}>
+              Xác nhận tạo hình ({drawingPoints.length} điểm)
+            </div>
+
+            <div style={{ 
+              background: 'rgba(255, 166, 87, 0.9)', color: 'white', 
+              padding: '0.5rem 1rem', borderRadius: '8px', 
+              cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+              whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+            }}
+            onClick={() => undoDrawingPoint()}>
+              Hoàn tác
+            </div>
+
+            <div style={{ 
+              background: 'rgba(248, 81, 73, 0.9)', color: 'white', 
+              padding: '0.5rem 1rem', borderRadius: '8px', 
+              cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+              whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+            }}
+            onClick={() => clearDrawingPoints()}>
+              Xoá hết
+            </div>
           </div>
         </Html>
       )}
