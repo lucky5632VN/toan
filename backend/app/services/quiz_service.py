@@ -3,8 +3,7 @@ import json
 import logging
 import asyncio
 import random
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 from pydantic import BaseModel
 from typing import List, Dict, Any
 from dotenv import load_dotenv
@@ -136,21 +135,20 @@ def get_fallback_question(shape_type: str) -> dict:
 
 class QuizService:
     def __init__(self):
-        self.client = None
         if API_KEY:
             try:
-                self.client = genai.Client(api_key=API_KEY)
+                genai.configure(api_key=API_KEY)
             except Exception:
-                self.client = None
+                pass
         
         # Model configuration
-        self.primary_model = "gemini-2.0-flash"
-        self.fallback_model = "gemini-1.5-flash"
+        self.primary_model_name = "gemini-2.0-flash"
+        self.fallback_model_name = "gemini-1.5-flash"
         self.logger = logging.getLogger(__name__)
         self._quiz_cache = {}
 
     async def generate_quiz(self, shape_type: str, params: Dict[str, Any]) -> dict:
-        if not self.client:
+        if not API_KEY:
             self.logger.warning("Không có API Key, sử dụng ngân hàng câu hỏi dự phòng.")
             return get_fallback_question(shape_type)
 
@@ -162,28 +160,25 @@ class QuizService:
             return self._quiz_cache[cache_key]
 
         prompt = f"""
+        [HỆ THỐNG] {system_instruction}
+        
         [CHỦ ĐỀ ĐỀ BÀI]
         Loại hình khối: {shape_type}
         Tham số kích thước: {params}
         
-        Hãy sinh bài tập trắc nghiệm toán học tương ứng với khối hình này.
+        Hãy sinh bài tập trắc nghiệm toán học tương ứng với khối hình này. Trả về định dạng JSON thuần túy.
         """
 
         max_retries = 3
         retry_delay = 1
 
         # Tầng 1: Model chính
+        model = genai.GenerativeModel(self.primary_model_name)
         for attempt in range(max_retries):
             try:
-                response = self.client.models.generate_content(
-                    model=self.primary_model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_instruction,
-                        response_mime_type="application/json",
-                        response_schema=QuizSchema,
-                        temperature=0.7
-                    )
+                response = model.generate_content(
+                    prompt,
+                    generation_config={"response_mime_type": "application/json"}
                 )
                 return self._parse_quiz_response(response, cache_key)
             except Exception as e:
@@ -192,21 +187,16 @@ class QuizService:
                     if attempt < max_retries - 1:
                         await asyncio.sleep(retry_delay * (attempt + 1))
                         continue
-                self.logger.error(f"Model chính [{self.primary_model}] thất bại: {e}")
+                self.logger.error(f"Model chính [{self.primary_model_name}] thất bại: {e}")
                 break
 
         # Tầng 2: Model dự phòng
         try:
-            self.logger.info(f"→ Thử model dự phòng [{self.fallback_model}]...")
-            response = self.client.models.generate_content(
-                model=self.fallback_model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    response_schema=QuizSchema,
-                    temperature=0.7
-                )
+            self.logger.info(f"→ Thử model dự phòng [{self.fallback_model_name}]...")
+            fb_model = genai.GenerativeModel(self.fallback_model_name)
+            response = fb_model.generate_content(
+                prompt,
+                generation_config={"response_mime_type": "application/json"}
             )
             return self._parse_quiz_response(response, cache_key)
         except Exception as e:
