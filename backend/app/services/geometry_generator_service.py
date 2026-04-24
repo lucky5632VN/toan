@@ -126,6 +126,51 @@ def _build_triangular_pyramid(a: float, h: float) -> dict:
             "vertex_labels": labels}
 
 
+def _build_right_pyramid(a: float, h: float) -> dict:
+    """
+    Hình chóp vuông S.ABCD: SA vuông góc mặt đáy ABCD.
+    Đáy ABCD là hình vuông cạnh a. S nằm ngay trên đỉnh A, SA = h.
+    Convention: A ở góc trước-trái, B trước-phải, C sau-phải, D sau-trái.
+    """
+    verts = [
+        [0, 0, 0],   # 0: A  (gốc; SA thẳng đứng)
+        [a, 0, 0],   # 1: B
+        [a, a, 0],   # 2: C
+        [0, a, 0],   # 3: D
+        [0, 0, h],   # 4: S  (ngay trên A)
+    ]
+    # Nhìn từ góc trước-phải-trên (cạnh chuẩn SGK):
+    # Visible: SA(thẳng đứng), SB, SC, AB, BC
+    # Hidden : SD, CD, DA
+    visible_edges = [[4,0],[4,1],[4,2],[0,1],[1,2]]
+    hidden_edges  = [[4,3],[2,3],[3,0]]
+    faces = [[0,1,2,3],[0,1,4],[1,2,4],[2,3,4],[3,0,4]]
+    labels = ["A","B","C","D","S"]
+    return {"vertices": verts, "faces": faces,
+            "visible_edges": visible_edges, "hidden_edges": hidden_edges,
+            "vertex_labels": labels}
+
+
+def _build_right_triangular_pyramid(a: float, h: float) -> dict:
+    """
+    Hình chóp vuông S.ABC: SA vuông góc mặt đáy ABC.
+    Đáy ABC là tam giác vuông cân tại A, hai cạnh góc vuông = a.
+    """
+    verts = [
+        [0, 0, 0],   # 0: A  (gốc; SA thẳng đứng)
+        [a, 0, 0],   # 1: B
+        [0, a, 0],   # 2: C
+        [0, 0, h],   # 3: S  (ngay trên A)
+    ]
+    visible_edges = [[3,0],[3,1],[3,2],[0,1],[1,2]]
+    hidden_edges  = [[2,0]]
+    faces = [[0,1,2],[0,1,3],[1,2,3],[2,0,3]]
+    labels = ["A","B","C","S"]
+    return {"vertices": verts, "faces": faces,
+            "visible_edges": visible_edges, "hidden_edges": hidden_edges,
+            "vertex_labels": labels}
+
+
 def _build_prism(a: float, h: float) -> dict:
     """Lăng trụ tứ giác đều ABCD.A'B'C'D': cạnh đáy a, chiều cao h."""
     hf = a / 2
@@ -175,38 +220,49 @@ def _local_geometry_fallback(text: str) -> dict:
     t = (text or "").lower()
 
     # ── Nhận dạng số đỉnh đáy từ ký hiệu hình học (S.ABCD → 4, S.ABC → 3) ──
-    # Dùng regex để tránh lỗi substring: "s.abc" ⊂ "s.abcd"
     vertex_match = re.search(r'[a-z]\.[a-z]{2,}', t)
-    base_vertex_count = len(vertex_match.group(0)) - 2 if vertex_match else 4  # trừ "X."
+    base_vertex_count = len(vertex_match.group(0)) - 2 if vertex_match else 4
     is_tam_giac = (base_vertex_count == 3) or ("tam giác" in t)
 
     is_chop = "chóp" in t or "chop" in t
     is_lang_tru = "lăng trụ" in t or "lang tru" in t
 
+    # ── Phát hiện SA⊥(ABCD) — hình chóp vuông ────────────────────────────────
+    # Các pattern: "SA⊥(ABCD)", "SA vuông góc", "SA_|_(ABCD)", "SA⊥ABCD"
+    is_right_angle_sa = bool(
+        re.search(r'sa\s*[⊥_]\s*[\(\[]?[abcd]', t) or
+        re.search(r'sa\s+vuông\s+góc', t) or
+        re.search(r'sa\s+vuong\s+goc', t)
+    )
+
     # ── Trích xuất kích thước ─────────────────────────────────────────────────
-    # SA=a hoặc SA = số → chiều cao (khi SA⊥mặt đáy)
-    sa_match = re.search(r'sa\s*[=⊥]\s*([a-z0-9]+(?:[.,]\d+)?)', t)
+    a = _extract_number(text, ["cạnh", "canh", "a =", "a=", "cạnh đáy"]) or 6.0
+
+    # SA=số → dùng làm chiều cao; SA=a → chiều cao bằng cạnh đáy
+    sa_match = re.search(r'sa\s*=\s*([a-z0-9]+(?:[.,]\d+)?)', t)
     if sa_match:
         raw = sa_match.group(1)
         try:
             h = float(raw.replace(",", "."))
         except ValueError:
-            h = 4.0  # SA=a → dùng mặc định
+            h = a   # SA=a (chữ a) → chiều cao = cạnh đáy
     else:
-        h = _extract_number(text, ["chiều cao", "chieu cao", "h =", "h="]) or 4.0
-
-    a = _extract_number(text, ["cạnh", "canh", "a =", "a=", "cạnh đáy"]) or 6.0
-    # Nếu SA=a (không phải số) thì lấy a làm chiều cao
-    if re.search(r'sa\s*=\s*a\b', t) and h == 4.0:
-        h = a
+        h = _extract_number(text, ["chiều cao", "chieu cao", "h =", "h="]) or a
 
     logger.info(
-        f"[LocalFallback] text_sample='{text[:60]}...' "
+        f"[LocalFallback] text='{text[:60]}' "
         f"base_verts={base_vertex_count} is_tam_giac={is_tam_giac} "
-        f"is_chop={is_chop} is_lang_tru={is_lang_tru} a={a} h={h}"
+        f"is_chop={is_chop} is_lang_tru={is_lang_tru} "
+        f"is_right_sa={is_right_angle_sa} a={a} h={h}"
     )
 
     if is_chop:
+        if is_right_angle_sa:
+            # Hình chóp vuông: S ngay trên A
+            if is_tam_giac:
+                return _build_right_triangular_pyramid(a, h)
+            return _build_right_pyramid(a, h)
+        # Hình chóp đều: S trên tâm
         if is_tam_giac:
             return _build_triangular_pyramid(a, h)
         return _build_pyramid(a, h)
@@ -215,7 +271,7 @@ def _local_geometry_fallback(text: str) -> dict:
             return _build_triangular_prism(a, h)
         return _build_prism(a, h)
     else:
-        # Mặc định: hình chóp tứ giác
+        # Mặc định: hình chóp tứ giác đều
         return _build_pyramid(a, h)
 
 
