@@ -92,15 +92,4 @@ class MathTutorService:
             logger.error(f"Tất cả models đều thất bại: {e}")
             return "Gia sư AI hiện đang nhận được quá nhiều yêu cầu cùng lúc. Vui lòng chờ vài giây rồi đặt câu hỏi tiếp nhé!"
 
-math_tutor_service = MathTutorService()     model=self.fallback_model,
-                history=formatted_history,
-                config=config
-            )
-            response = chat.send_message(user_message)
-            return response.text
-        except Exception as e:
-            logger.error(f"Tất cả models đều thất bại: {e}")
-            return "Gia sư AI hiện đang nhận được quá nhiều yêu cầu cùng lúc. Vui lòng chờ vài giây rồi đặt câu hỏi tiếp nhé!"
-
-
 math_tutor_service = MathTutorService()

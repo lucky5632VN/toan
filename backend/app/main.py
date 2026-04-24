@@ -3,11 +3,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routers import geometry, cross_section, chat, geometry_generator, quiz
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+logger.info("Starting Spatial Mind 3D Backend...")
+
 app = FastAPI(
     title="SPATIAL MIND 3D",
     description="Backend API cho hệ sinh thái hình học tương tác tích hợp AI",
     version="1.1.0",
 )
+
+logger.info("FastAPI app instance created.")
 
 # Đọc allowed origins từ biến môi trường (production) hoặc dùng localhost (dev)
 _origins_env = os.getenv("ALLOWED_ORIGINS", "")
@@ -35,11 +44,13 @@ async def log_requests(request, call_next):
     response = await call_next(request)
     return response
 
+logger.info("Registering routers...")
 app.include_router(geometry.router, prefix="/api/geometry", tags=["Hình học 3D"])
 app.include_router(cross_section.router, prefix="/api/cross-section", tags=["Thiết diện"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chatbot Gia sư"])
 app.include_router(geometry_generator.router, prefix="/api/v1/geometry", tags=["AI Geometry Generator"])
 app.include_router(quiz.router, prefix="/api/v1/quiz", tags=["AI Auto Quiz Generation"])
+logger.info("All routers registered successfully.")
 
 
 @app.get("/")
