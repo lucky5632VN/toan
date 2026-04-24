@@ -25,7 +25,7 @@ const PlotMulti: React.FC<{ zoom: number }> = ({ zoom }) => {
 
 
 const ExpressionLayer: React.FC<{ formula: string; color: string; x0: number; zoom: number }> = ({ formula, color, x0, zoom }) => {
-  const { size } = useThree();
+  const { size, camera } = useThree();
   
   // Debounce formula to prevent crash during typing
   const [debouncedFormula, setDebouncedFormula] = React.useState(formula);
@@ -48,12 +48,18 @@ const ExpressionLayer: React.FC<{ formula: string; color: string; x0: number; zo
       const node = math.parse(eq);
       const code = node.compile();
 
+      const centerX = camera.position.x;
+      const centerY = camera.position.y;
       const halfW = (size.width / zoom);
       const halfH = (size.height / zoom);
-      const range = Math.max(halfW, halfH) * 2.5;
-      const baseRes = 80; 
+      
+      const range = Math.max(halfW, halfH) * 2.2;
+      const baseRes = 120; // Tăng độ phân giải cho hàm ẩn
       const step = range / baseRes;
       
+      const startX = centerX - range / 2;
+      const startY = centerY - range / 2;
+
       const evalAt = (x: number, y: number) => {
         try {
           const val = code.evaluate({ x, y });
@@ -100,11 +106,11 @@ const ExpressionLayer: React.FC<{ formula: string; color: string; x0: number; zo
       };
 
       for (let j = 0; j < baseRes; j++) {
-        const y0 = j * step - range / 2;
-        const y1 = (j + 1) * step - range / 2;
+        const y0 = startY + j * step;
+        const y1 = startY + (j + 1) * step;
         for (let i = 0; i < baseRes; i++) {
-          const x0 = i * step - range / 2;
-          const x1 = (i + 1) * step - range / 2;
+          const x0 = startX + i * step;
+          const x1 = startX + (i + 1) * step;
 
           const v1 = evalAt(x0, y0);
           const v2 = evalAt(x1, y0);
@@ -119,7 +125,6 @@ const ExpressionLayer: React.FC<{ formula: string; color: string; x0: number; zo
           if (v3 > 0) caseIndex |= 4;
           if (v4 > 0) caseIndex |= 8;
 
-          // If the curve passes through this cell, subdivide it
           if (caseIndex !== 0 && caseIndex !== 15) {
             const subRes = 4;
             const subStep = step / subRes;
@@ -138,7 +143,7 @@ const ExpressionLayer: React.FC<{ formula: string; color: string; x0: number; zo
       }
     } catch (e) {}
     return lines;
-  }, [debouncedFormula, isImplicit, size, zoom]);
+  }, [debouncedFormula, isImplicit, size, zoom, camera.position.x, camera.position.y]);
 
   const explicitPoints = useMemo(() => {
     if (isImplicit) return [];
@@ -146,17 +151,37 @@ const ExpressionLayer: React.FC<{ formula: string; color: string; x0: number; zo
     try {
       const node = math.parse(debouncedFormula);
       const code = node.compile();
-      const range = 60;
-      const steps = 600;
-      const step = range / steps;
+      
+      // Tính toán dải x dựa trên vị trí camera và zoom
+      const centerX = camera.position.x;
+      const viewWidth = size.width / zoom;
+      const xMin = centerX - viewWidth * 1.5;
+      const xMax = centerX + viewWidth * 1.5;
+      
+      const steps = 2000; // Tăng số điểm để cực kỳ mượt mà
+      const step = (xMax - xMin) / steps;
+      
       for (let i = 0; i <= steps; i++) {
-        const x = i * step - range / 2;
-        const y = code.evaluate({ x });
-        if (typeof y === 'number' && !isNaN(y) && isFinite(y)) pts.push([x, y, 0]);
+        const x = xMin + i * step;
+        try {
+          const y = code.evaluate({ x });
+          if (typeof y === 'number' && !isNaN(y) && isFinite(y)) {
+            // Giới hạn y để tránh lỗi render khi y quá lớn
+            if (Math.abs(y) < 10000) {
+              pts.push([x, y, 0]);
+            } else {
+              if (pts.length > 0) pts.push([NaN, NaN, NaN] as any);
+            }
+          } else {
+            if (pts.length > 0) pts.push([NaN, NaN, NaN] as any);
+          }
+        } catch {
+          if (pts.length > 0) pts.push([NaN, NaN, NaN] as any);
+        }
       }
     } catch (e) {}
     return pts;
-  }, [debouncedFormula, isImplicit]);
+  }, [debouncedFormula, isImplicit, camera.position.x, size.width, zoom]);
 
   const tangentData = useMemo(() => {
     if (isImplicit) return null;
@@ -175,23 +200,33 @@ const ExpressionLayer: React.FC<{ formula: string; color: string; x0: number; zo
     } catch (e) { return null; }
   }, [debouncedFormula, x0, isImplicit]);
 
-  const implicitPoints = useMemo(() => {
-    if (!isImplicit || !implicitSegments) return [];
-    const pts: [number, number, number][] = [];
-    implicitSegments.forEach(seg => {
-      pts.push(seg[0]);
-      pts.push(seg[1]);
-      pts.push([NaN, NaN, NaN]); // Break the line
-    });
-    return pts;
+  const implicitGeometry = useMemo(() => {
+    if (!isImplicit || !implicitSegments || implicitSegments.length === 0) return null;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(implicitSegments.length * 2 * 3);
+    for (let i = 0; i < implicitSegments.length; i++) {
+      const seg = implicitSegments[i];
+      positions[i * 6 + 0] = seg[0][0];
+      positions[i * 6 + 1] = seg[0][1];
+      positions[i * 6 + 2] = seg[0][2];
+      positions[i * 6 + 3] = seg[1][0];
+      positions[i * 6 + 4] = seg[1][1];
+      positions[i * 6 + 5] = seg[1][2];
+    }
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    return geometry;
   }, [isImplicit, implicitSegments]);
 
   return (
     <group>
       {isImplicit ? (
-        implicitPoints.length > 0 ? <Line points={implicitPoints as any} color={color} lineWidth={2.5} transparent opacity={0.9} /> : null
+        implicitGeometry && (
+          <lineSegments geometry={implicitGeometry}>
+            <lineBasicMaterial color={color} linewidth={2} transparent opacity={0.9} />
+          </lineSegments>
+        )
       ) : (
-        explicitPoints.length > 0 ? <Line points={explicitPoints as any} color={color} lineWidth={3.5} transparent opacity={0.9} /> : null
+        explicitPoints.length > 0 && <Line points={explicitPoints as any} color={color} lineWidth={3.5} transparent opacity={0.9} />
       )}
       
       {tangentData && (
@@ -258,16 +293,36 @@ const GridManual: React.FC<{ zoom: number }> = ({ zoom }) => {
     else minorLines.push(pts);
   }
 
-  const majorPts: [number, number, number][] = [];
-  majorLines.forEach(l => { majorPts.push(l[0]); majorPts.push(l[1]); majorPts.push([NaN, NaN, NaN]); });
-  
-  const minorPts: [number, number, number][] = [];
-  minorLines.forEach(l => { minorPts.push(l[0]); minorPts.push(l[1]); minorPts.push([NaN, NaN, NaN]); });
+  const majorGeometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(majorLines.length * 2 * 3);
+    majorLines.forEach((l, i) => {
+      pos[i*6+0]=l[0][0]; pos[i*6+1]=l[0][1]; pos[i*6+2]=l[0][2];
+      pos[i*6+3]=l[1][0]; pos[i*6+4]=l[1][1]; pos[i*6+5]=l[1][2];
+    });
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    return geo;
+  }, [majorLines]);
+
+  const minorGeometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(minorLines.length * 2 * 3);
+    minorLines.forEach((l, i) => {
+      pos[i*6+0]=l[0][0]; pos[i*6+1]=l[0][1]; pos[i*6+2]=l[0][2];
+      pos[i*6+3]=l[1][0]; pos[i*6+4]=l[1][1]; pos[i*6+5]=l[1][2];
+    });
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    return geo;
+  }, [minorLines]);
 
   return (
     <group>
-      <Line points={minorPts as any} color="#1e293b" lineWidth={0.6} transparent opacity={0.3 * alpha} />
-      <Line points={majorPts as any} color="#334155" lineWidth={1} transparent opacity={0.6} />
+      <lineSegments geometry={minorGeometry}>
+        <lineBasicMaterial color="#1e293b" transparent opacity={0.3 * alpha} />
+      </lineSegments>
+      <lineSegments geometry={majorGeometry}>
+        <lineBasicMaterial color="#334155" transparent opacity={0.6} />
+      </lineSegments>
     </group>
   );
 };

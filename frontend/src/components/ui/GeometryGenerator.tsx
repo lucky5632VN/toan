@@ -194,9 +194,9 @@ function useThreeRenderer(
       const occluderMesh = new THREE.Mesh(
         faceGeo,
         new THREE.MeshBasicMaterial({
-          color: '#1f6feb',
+          color: '#7fbcf5',         // Màu xanh pastel nhạt
           transparent: true,        // Cùng Transparent bucket với Lines → renderOrder hoạt động đúng
-          opacity: 0.15,
+          opacity: 0.08,            // Siêu nhạt để không gây rối mắt
           side: THREE.DoubleSide,   // Hiển thị cả mặt trong khi xoay 360°
           depthWrite: true,         // BẮT BUỘC: ghi khoảng cách vào Depth Buffer
           polygonOffset: true,      // Chống Z-Fighting: đẩy mesh lùi ra xa camera
