@@ -174,16 +174,37 @@ def _local_geometry_fallback(text: str) -> dict:
     """
     t = (text or "").lower()
 
-    # Nhận dạng loại hình
-    is_tam_giac = "tam giác" in t or "s.abc" in t
+    # ── Nhận dạng số đỉnh đáy từ ký hiệu hình học (S.ABCD → 4, S.ABC → 3) ──
+    # Dùng regex để tránh lỗi substring: "s.abc" ⊂ "s.abcd"
+    vertex_match = re.search(r'[a-z]\.[a-z]{2,}', t)
+    base_vertex_count = len(vertex_match.group(0)) - 2 if vertex_match else 4  # trừ "X."
+    is_tam_giac = (base_vertex_count == 3) or ("tam giác" in t)
+
     is_chop = "chóp" in t or "chop" in t
-    is_lang_tru = "lăng trụ" in t or "lang tru" in t or "lăng trụ" in t
+    is_lang_tru = "lăng trụ" in t or "lang tru" in t
 
-    # Trích xuất kích thước
+    # ── Trích xuất kích thước ─────────────────────────────────────────────────
+    # SA=a hoặc SA = số → chiều cao (khi SA⊥mặt đáy)
+    sa_match = re.search(r'sa\s*[=⊥]\s*([a-z0-9]+(?:[.,]\d+)?)', t)
+    if sa_match:
+        raw = sa_match.group(1)
+        try:
+            h = float(raw.replace(",", "."))
+        except ValueError:
+            h = 4.0  # SA=a → dùng mặc định
+    else:
+        h = _extract_number(text, ["chiều cao", "chieu cao", "h =", "h="]) or 4.0
+
     a = _extract_number(text, ["cạnh", "canh", "a =", "a=", "cạnh đáy"]) or 6.0
-    h = _extract_number(text, ["chiều cao", "chieu cao", "h =", "h=", "SA ="]) or 4.0
+    # Nếu SA=a (không phải số) thì lấy a làm chiều cao
+    if re.search(r'sa\s*=\s*a\b', t) and h == 4.0:
+        h = a
 
-    logger.info(f"[LocalFallback] shape={'chop' if is_chop else 'lang_tru'} tam_giac={is_tam_giac} a={a} h={h}")
+    logger.info(
+        f"[LocalFallback] text_sample='{text[:60]}...' "
+        f"base_verts={base_vertex_count} is_tam_giac={is_tam_giac} "
+        f"is_chop={is_chop} is_lang_tru={is_lang_tru} a={a} h={h}"
+    )
 
     if is_chop:
         if is_tam_giac:
@@ -196,6 +217,7 @@ def _local_geometry_fallback(text: str) -> dict:
     else:
         # Mặc định: hình chóp tứ giác
         return _build_pyramid(a, h)
+
 
 
 # ─── Service ─────────────────────────────────────────────────────────────────
