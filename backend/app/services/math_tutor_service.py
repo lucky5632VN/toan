@@ -28,8 +28,9 @@ class MathTutorService:
                 logger.error(f"Không thể khởi tạo GenAI Client: {e}")
                 self.client = None
                 
-        # Sử dụng model gemini-2.0-flash (Model ổn định trong môi trường này)
-        self.model_name = "gemini-2.0-flash"
+        # Model configuration
+        self.primary_model = "gemini-2.0-flash"
+        self.fallback_model = "gemini-1.5-flash"
         
         # System Instruction (Socratic Method + UI Control)
         # ... (rest of the instruction string remains the same)
@@ -90,10 +91,11 @@ class MathTutorService:
         )
 
         max_retries = 3
+        # Tầng 1: Model chính
         for attempt in range(max_retries):
             try:
                 chat = self.client.chats.create(
-                    model=self.model_name,
+                    model=self.primary_model,
                     history=formatted_history,
                     config=config
                 )
@@ -102,17 +104,27 @@ class MathTutorService:
                 
             except Exception as e:
                 error_msg = str(e)
-                # Bắt cả lỗi 429 (Rate Limit) và 503 (Model quá tải/Unvailable)
                 if any(x in error_msg for x in ["429", "503", "exhausted", "demand", "unavailable"]):
                     if attempt < max_retries - 1:
-                        logger.warning(f"Gemini API busy (429/503). Retrying in {attempt + 1}s...")
+                        logger.warning(f"Gemini API busy ({self.primary_model}). Retrying in {attempt + 1}s...")
                         time.sleep(attempt + 1)
                         continue
-                    else:
-                        return "Gia sư AI hiện đang nhận được quá nhiều yêu cầu cùng lúc (Hệ thống đang quá tải). Vui lòng chờ vài giây rồi đặt câu hỏi tiếp nhé!"
-                
-                logger.error(f"Lỗi khi kết nối với Gemini API: {e}")
-                raise HTTPException(status_code=500, detail=f"Hệ thống bị lỗi khi kết nối tới AI Tutor: {str(e)}")
+                logger.error(f"Model chính [{self.primary_model}] thất bại: {e}")
+                break
+
+        # Tầng 2: Model dự phòng
+        try:
+            logger.info(f"→ Thử model dự phòng [{self.fallback_model}]...")
+            chat = self.client.chats.create(
+                model=self.fallback_model,
+                history=formatted_history,
+                config=config
+            )
+            response = chat.send_message(user_message)
+            return response.text
+        except Exception as e:
+            logger.error(f"Tất cả models đều thất bại: {e}")
+            return "Gia sư AI hiện đang nhận được quá nhiều yêu cầu cùng lúc. Vui lòng chờ vài giây rồi đặt câu hỏi tiếp nhé!"
 
 
 math_tutor_service = MathTutorService()

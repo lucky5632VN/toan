@@ -17,6 +17,10 @@ export const useGeometryAPI = () => {
   // Fetch shape data whenever selectedShape or shapeParams change
   useEffect(() => {
     const fetchShape = async () => {
+      if (selectedShape === 'none') {
+        setShapeData(null as any);
+        return;
+      }
       if (selectedShape === 'custom') return;
       setLoading(true);
       setError(null);

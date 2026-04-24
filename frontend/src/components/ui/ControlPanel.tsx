@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Eye, PenTool, MousePointer2 } from 'lucide-react';
+import { Box, Eye, PenTool, MousePointer2, Trash2 } from 'lucide-react';
 import { useGeometryStore } from '../../store/useGeometryStore';
 import { SHAPE_CONFIGS } from '../../config/shapes';
 import { CustomShapeBuilder } from './CustomShapeBuilder';
@@ -21,7 +21,8 @@ const ControlPanel: React.FC = () => {
     toggleWireframe,
     isDrawingMode,
     setDrawingMode,
-    clearDrawingPoints
+    clearDrawingPoints,
+    setShapeData
   } = useGeometryStore();
 
   const [showBuilder, setShowBuilder] = useState(false);
@@ -151,6 +152,23 @@ const ControlPanel: React.FC = () => {
       </div>
 
       {showBuilder && <CustomShapeBuilder onClose={() => setShowBuilder(false)} />}
+
+      <button 
+        onClick={() => {
+          setSelectedShape('none');
+          setShapeData(null as any);
+          clearDrawingPoints();
+        }}
+        style={{
+          marginTop: '1.5rem',
+          padding: '0.6rem', background: 'rgba(248, 81, 73, 0.1)', color: '#f85149',
+          border: '1px solid rgba(248, 81, 73, 0.2)', borderRadius: '8px', cursor: 'pointer', textAlign: 'center',
+          display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.4rem', fontWeight: 600, fontSize: '0.8rem',
+          width: '100%'
+        }}
+      >
+        <Trash2 size={14} /> Xoá Toàn Bộ Canvas
+      </button>
     </div>
   );
 };

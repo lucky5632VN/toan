@@ -9,7 +9,7 @@ import MouseDrawingOverlay from './MouseDrawingOverlay';
 import { useGeometryStore } from '../../store/useGeometryStore';
 
 const Scene: React.FC = () => {
-  const { showAxes, isDrawingMode } = useGeometryStore();
+  const { showAxes, isDrawingMode, isGeneratorOpen } = useGeometryStore();
 
   return (
     <div className="canvas-container">
@@ -38,11 +38,14 @@ const Scene: React.FC = () => {
           />
           <pointLight position={[-10, -10, -10]} intensity={0.5} />
           
-          {showAxes && <OxyzAxes />}
-          
-          <SolidShape />
-          <CrossSection />
-          <MouseDrawingOverlay />
+          {!isGeneratorOpen && (
+            <>
+              {showAxes && <OxyzAxes />}
+              <SolidShape />
+              <CrossSection />
+              <MouseDrawingOverlay />
+            </>
+          )}
 
           <ContactShadows 
             position={[0, 0, 0]} 

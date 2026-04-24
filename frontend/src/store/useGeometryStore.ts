@@ -40,8 +40,10 @@ interface GeometryState {
   }>;
   graphVariables: Record<string, number>;
   x0: number; // For tangent line exploration
+  isGeneratorOpen: boolean;
 
   // Actions
+  setIsGeneratorOpen: (open: boolean) => void;
   setSelectedShape: (type: ShapeType) => void;
   updateParams: (params: Partial<ShapeParams>) => void;
   setShapeData: (data: ShapeData) => void;
@@ -103,8 +105,10 @@ export const useGeometryStore = create<GeometryState>()(
       ],
       graphVariables: { a: 1, b: 0, c: 0 },
       x0: 0,
+      isGeneratorOpen: false,
 
       // Actions
+      setIsGeneratorOpen: (open) => set({ isGeneratorOpen: open }),
       setSelectedShape: (type) => set({ selectedShape: type }),
       updateParams: (newParams) => set((state) => ({ 
         shapeParams: { ...state.shapeParams, ...newParams } 
@@ -170,7 +174,8 @@ export const useGeometryStore = create<GeometryState>()(
         showAxes: state.showAxes,
         showLabels: state.showLabels,
         opacity: state.opacity,
-        wireframe: state.wireframe
+        wireframe: state.wireframe,
+        isGeneratorOpen: state.isGeneratorOpen
       }),
     }
   )

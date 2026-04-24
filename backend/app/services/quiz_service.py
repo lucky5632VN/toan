@@ -143,7 +143,9 @@ class QuizService:
             except Exception:
                 self.client = None
         
-        self.model_name = "gemini-2.0-flash"
+        # Model configuration
+        self.primary_model = "gemini-2.0-flash"
+        self.fallback_model = "gemini-1.5-flash"
         self.logger = logging.getLogger(__name__)
         self._quiz_cache = {}
 
@@ -170,10 +172,11 @@ class QuizService:
         max_retries = 3
         retry_delay = 1
 
+        # Tầng 1: Model chính
         for attempt in range(max_retries):
             try:
                 response = self.client.models.generate_content(
-                    model=self.model_name,
+                    model=self.primary_model,
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         system_instruction=system_instruction,
@@ -182,27 +185,41 @@ class QuizService:
                         temperature=0.7
                     )
                 )
-                
-                raw_text = response.text
-                import re
-                cleaned = re.sub(r"```(?:json)?\s*", "", raw_text)
-                cleaned = cleaned.replace("```", "").strip()
-                
-                result = json.loads(cleaned)
-                self._quiz_cache[cache_key] = result
-                return result
-                
+                return self._parse_quiz_response(response, cache_key)
             except Exception as e:
                 error_msg = str(e)
-                self.logger.error(f"Attempt {attempt+1} failed: {error_msg}")
-                
                 if any(x in error_msg.lower() for x in ["429", "503", "exhausted", "demand", "unavailable"]):
                     if attempt < max_retries - 1:
                         await asyncio.sleep(retry_delay * (attempt + 1))
                         continue
-                
-                # Dùng ngân hàng câu hỏi dự phòng thay vì thông báo lỗi
-                self.logger.warning(f"API thất bại, dùng câu hỏi dự phòng cho shape_type='{shape_type}'")
-                return get_fallback_question(shape_type)
+                self.logger.error(f"Model chính [{self.primary_model}] thất bại: {e}")
+                break
+
+        # Tầng 2: Model dự phòng
+        try:
+            self.logger.info(f"→ Thử model dự phòng [{self.fallback_model}]...")
+            response = self.client.models.generate_content(
+                model=self.fallback_model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    response_mime_type="application/json",
+                    response_schema=QuizSchema,
+                    temperature=0.7
+                )
+            )
+            return self._parse_quiz_response(response, cache_key)
+        except Exception as e:
+            self.logger.error(f"Tất cả models đều thất bại: {e}")
+            return get_fallback_question(shape_type)
+
+    def _parse_quiz_response(self, response, cache_key: str) -> dict:
+        raw_text = response.text
+        import re
+        cleaned = re.sub(r"```(?:json)?\s*", "", raw_text)
+        cleaned = cleaned.replace("```", "").strip()
+        result = json.loads(cleaned)
+        self._quiz_cache[cache_key] = result
+        return result
 
 quiz_service = QuizService()

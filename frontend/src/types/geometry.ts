@@ -38,7 +38,8 @@ export type ShapeType =
   | 'box' 
   | 'cone' 
   | 'sphere'
-  | 'custom';
+  | 'custom'
+  | 'none';
 
 export interface ShapeConfig {
   id: ShapeType;

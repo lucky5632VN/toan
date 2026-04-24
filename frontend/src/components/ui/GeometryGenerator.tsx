@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { useGeometryStore } from '../../store/useGeometryStore';
 import {
   Wand2, Upload, Loader2, X, ImagePlus, FileText,
   AlertCircle, Eye, RefreshCw
@@ -11,6 +12,7 @@ import api from '../../api/axios';
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface GeometryData {
+  analysis?: string;
   vertices: number[][];
   faces: number[][];
   visible_edges: number[][];
@@ -128,9 +130,14 @@ function useThreeRenderer(
     const scene = sceneRef.current;
     if (!scene) return;
 
-    // Dọn dẹp: chỉ xóa direct children có isGeometry (Group chứa toàn bộ geometry)
-    const toRemove = scene.children.filter(obj => obj.userData.isGeometry);
-    toRemove.forEach(obj => scene.remove(obj));
+    // Dọn dẹp triệt để bằng traverse để tìm mọi object (kể cả nested) có isGeometry
+    const toRemove: THREE.Object3D[] = [];
+    scene.traverse((obj) => {
+      if (obj.userData.isGeometry) toRemove.push(obj);
+    });
+    toRemove.forEach((obj) => {
+      if (obj.parent) obj.parent.remove(obj);
+    });
 
     if (!data || data.vertices.length < 2) return;
 
@@ -206,13 +213,13 @@ function useThreeRenderer(
     // depthFunc: GreaterDepth → chỉ render những pixel CÓ khoảng cách lớn hơn
     // giá trị Depth Buffer (tức là nằm "phía sau" mặt khối) → hiển thị nét đứt
     const dashedMat = new THREE.LineDashedMaterial({
-      color: '#8b949e',
-      dashSize: 0.15,
-      gapSize: 0.10,
+      color: '#6e7681',                // Màu trầm hơn để tạo chiều sâu
+      dashSize: 0.1,                   // Nét đứt ngắn hơn, tinh tế hơn
+      gapSize: 0.06,
       depthFunc: THREE.GreaterDepth,   // Chỉ vẽ khi cạnh BỊ mặt khối che khuất
       depthWrite: false,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.5,                    // Độ mờ vừa phải để không gây nhiễu
     });
     const dashedLines = new THREE.LineSegments(edgeGeo.clone(), dashedMat);
     // BẮT BUỘC: computeLineDistances() để nét đứt tính được độ dài đoạn
@@ -225,11 +232,11 @@ function useThreeRenderer(
     // depthFunc: LessEqualDepth → chỉ render những pixel CÓ khoảng cách nhỏ hơn
     // hoặc bằng Depth Buffer (tức là nằm "phía trước" hoặc trên mặt khối) → nét liền
     const solidMat = new THREE.LineBasicMaterial({
-      color: '#e6edf3',
+      color: '#ffffff',                // Màu trắng tinh khiết cho nét chính
       depthFunc: THREE.LessEqualDepth, // Chỉ vẽ khi cạnh KHÔNG bị che khuất
       depthWrite: false,
-      transparent: true,               // BẮT BUỘC: đưa vào Transparent bucket cùng Mesh
-      opacity: 1.0,                    // Nét liền vẫn đậm 100%
+      transparent: true,
+      opacity: 1.0,
     });
     const solidLines = new THREE.LineSegments(edgeGeo, solidMat);
     solidLines.renderOrder = 2;
@@ -238,9 +245,14 @@ function useThreeRenderer(
 
     // ── Vertex spheres + CSS2D labels ──────────────────────────────────────
     verts.forEach((v, idx) => {
+      // Điểm chấm siêu nhỏ để tinh tế
       const sphere = new THREE.Mesh(
-        new THREE.SphereGeometry(0.07, 12, 12),
-        new THREE.MeshBasicMaterial({ color: '#58a6ff' })
+        new THREE.SphereGeometry(0.02, 16, 16),
+        new THREE.MeshStandardMaterial({ 
+          color: '#ffffff',            // Màu trắng cho đồng bộ với nét liền
+          emissive: '#58a6ff',
+          emissiveIntensity: 1.0 
+        })
       );
       sphere.position.copy(v);
       sphere.userData.isGeometry = true;
@@ -251,14 +263,16 @@ function useThreeRenderer(
         const div = document.createElement('div');
         div.textContent = label;
         div.style.cssText = `
-          color: #ffffff; font-size: 14px; font-weight: 700;
+          color: #ffffff; font-size: 10px; font-weight: 900;
           font-family: 'Inter', sans-serif; pointer-events: none;
-          text-shadow: 0 1px 4px rgba(0,0,0,0.9);
-          background: rgba(31,111,235,0.7); padding: 1px 6px;
-          border-radius: 4px; border: 1px solid rgba(88,166,255,0.5);
+          text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+          background: rgba(22,27,34,0.6); padding: 1px 4px;
+          border-radius: 2px; border: 1px solid rgba(88,166,255,0.3);
+          transform: translate(-50%, -50%);
         `;
         const cssObj = new CSS2DObject(div);
-        cssObj.position.set(v.x + 0.15, v.y + 0.15, v.z + 0.25);
+        // Kéo nhãn lại sát điểm hơn (offset cực nhỏ)
+        cssObj.position.set(v.x + 0.04, v.y + 0.04, v.z + 0.06);
         cssObj.userData.isGeometry = true;
         geoGroup.add(cssObj);
       }
@@ -298,6 +312,17 @@ const GeometryGenerator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   useThreeRenderer(mountRef, geoData);
 
+  const setShapeData = useGeometryStore(state => state.setShapeData);
+  const setSelectedShape = useGeometryStore(state => state.setSelectedShape);
+  const clearDrawingPoints = useGeometryStore(state => state.clearDrawingPoints);
+
+  const handleClearAll = useCallback(() => {
+    setGeoData(null);
+    setSelectedShape('none');
+    setShapeData(null as any);
+    clearDrawingPoints();
+  }, [setGeoData, setSelectedShape, setShapeData, clearDrawingPoints]);
+
   const handleImageChange = (file: File | null) => {
     if (!file) { setImageFile(null); setImagePreview(null); return; }
     setImageFile(file);
@@ -312,7 +337,7 @@ const GeometryGenerator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     }
     setIsLoading(true);
     setError(null);
-    setGeoData(null);
+    handleClearAll(); // Xoá sạch mọi thứ trước khi tạo mới
 
     const formData = new FormData();
     formData.append('text', text.trim());
@@ -489,6 +514,21 @@ const GeometryGenerator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             }}>
               <span style={{ color: '#58a6ff', fontWeight: 600 }}>💡 Mẹo:</span> Mô tả đầy đủ loại hình (chóp, lăng trụ...), kích thước và điều kiện đặc biệt (vuông góc, cân, đều...) để AI vẽ chính xác hơn.
             </div>
+
+            {/* Analysis Display */}
+            {geoData?.analysis && (
+              <div style={{
+                marginTop: '0.5rem', padding: '1rem', borderRadius: 12,
+                background: 'rgba(35, 134, 54, 0.05)', border: '1px solid rgba(35, 134, 54, 0.2)',
+              }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#3fb950', display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+                  <Eye size={14} /> AI ĐÃ ĐỌC ĐƯỢC ĐỀ:
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#c9d1d9', lineHeight: 1.6, fontStyle: 'italic', whiteSpace: 'pre-wrap' }}>
+                  "{geoData.analysis}"
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Generate Button */}
@@ -587,7 +627,7 @@ const GeometryGenerator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               </div>
               {/* Regenerate */}
               <button
-                onClick={() => setGeoData(null)}
+                onClick={handleClearAll}
                 style={{
                   position: 'absolute', top: '0.8rem', right: '0.8rem',
                   background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.1)',

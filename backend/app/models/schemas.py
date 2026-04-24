@@ -59,6 +59,7 @@ class MathTutorChatResponse(BaseModel):
 
 class GeometryGeneratorResponse(BaseModel):
     """Response trả về bởi AI Geometry Generator (Text/Image → 3D)."""
+    analysis: Optional[str] = Field(default="", description="Văn bản đề bài AI đã đọc được")
     vertices: List[List[float]] = Field(description="Mảng toạ độ các đỉnh [x, y, z]")
     faces: List[List[int]] = Field(description="Mảng mặt, mỗi mặt là danh sách chỉ số đỉnh")
     visible_edges: List[List[int]] = Field(description="Các cạnh nhìn thấy (nét liền)")

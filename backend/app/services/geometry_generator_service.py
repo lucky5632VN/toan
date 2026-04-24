@@ -15,8 +15,7 @@ import logging
 from fastapi import HTTPException
 from dotenv import load_dotenv
 
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 from tenacity import (
     retry,
@@ -34,23 +33,29 @@ logger = logging.getLogger(__name__)
 # ─── System Instruction ───────────────────────────────────────────────────────
 
 SYSTEM_INSTRUCTION = (
-    "Bạn là một chuyên gia hình học không gian. "
-    "Hãy đọc đề bài (văn bản hoặc hình ảnh) và bóc tách các dữ kiện không gian. "
-    "Trả về DUY NHẤT một chuỗi JSON thuần túy (không có markdown code block, không có ```json) theo cấu trúc sau:\n"
+    "Bạn là một chuyên gia Hình học Không gian và Thị giác Máy tính cấp cao. \n"
+    "NHIỆM VỤ: Phân tích đề bài (văn bản hoặc hình ảnh) để trích xuất dữ liệu hình học và chuyển đổi thành mô hình 3D JSON.\n\n"
+    "QUY TRÌNH PHÂN TÍCH BẮT BUỘC:\n"
+    "1. OCR & TRÍCH XUẤT THỰC THỂ:\n"
+    "   - Nếu có hình ảnh, hãy quét cực kĩ từng dòng chữ để tìm các điểm (A, B, C...), các trung điểm (M, N...), các giao điểm (O, P...), và các quan hệ (vuông góc, song song, độ dài).\n"
+    "   - Liệt kê TẤT CẢ các điểm xuất hiện trong đề bài. KHÔNG ĐƯỢC BỎ SÓT bất kỳ điểm nào (Ví dụ: nếu đề nhắc đến M là trung điểm BC, M PHẢI có tọa độ trong vertices).\n\n"
+    "2. TÍNH TOÁN TỌA ĐỘ (Vertices):\n"
+    "   - Đáy: Đặt tâm đáy tại (0,0,0) hoặc một đỉnh tại (0,0,0) sao cho hình cân đối.\n"
+    "   - Đường cao: Nếu SA ⊥ đáy, x_S = x_A, y_S = y_A, z_S = chiều cao.\n"
+    "   - Điểm phụ: Tính chính xác tọa độ trung điểm (M = (B+C)/2) và giao điểm (O = giao AC, BD).\n\n"
+    "3. KẾT NỐI (Edges):\n"
+    "   - 'visible_edges': Các cạnh ngoài và các đường nối điểm nhìn thấy được.\n"
+    "   - 'hidden_edges': TẤT CẢ các đường bị che, các đường chéo đáy, và ĐẶC BIỆT là các đoạn thẳng nối đến các điểm phụ (như SM, SN, SO, AM, BN, MN...).\n\n"
+    "4. ĐỊNH DẠNG JSON (Trả về DUY NHẤT JSON, KHÔNG CÓ VĂN BẢN THỪA):\n"
     "{\n"
+    "  \"analysis\": \"Văn bản đề bài mà bạn đã đọc được từ hình ảnh (Nếu là text thì chép lại, nếu là ảnh thì trích xuất chữ).\",\n"
     "  \"vertices\": [[x, y, z], ...],\n"
     "  \"faces\": [[i, j, k, ...], ...],\n"
     "  \"visible_edges\": [[i, j], ...],\n"
     "  \"hidden_edges\": [[i, j], ...],\n"
-    "  \"vertex_labels\": [\"A\", \"B\", ...]\n"
+    "  \"vertex_labels\": [\"A\", \"B\", \"C\", \"D\", \"S\", \"M\", \"N\", \"O\", \"P\", ...]\n"
     "}\n\n"
-    "QUY TẮC BẮT BUỘC:\n"
-    "1. Tự tính toán toạ độ (x, y, z) sao cho hình cân đối và dễ nhìn nhất (ưu tiên căn giữa gốc toạ độ).\n"
-    "2. Các cạnh bị che khuất (nằm phía sau mặt khối, không nhìn thấy từ góc nhìn phổ biến) "
-    "phải được đưa vào mảng 'hidden_edges'. Ví dụ: đáy phía dưới của hình chóp, cạnh đường chéo bị che.\n"
-    "3. Các cạnh nhìn thấy trực tiếp đưa vào 'visible_edges'.\n"
-    "4. Tất cả chỉ số trong 'faces', 'visible_edges', 'hidden_edges' đều là chỉ số (index) trong mảng 'vertices', bắt đầu từ 0.\n"
-    "5. KHÔNG trả lời thêm gì ngoài chuỗi JSON. Không giải thích. Chỉ JSON thuần túy."
+    "LƯU Ý: Phải ưu tiên độ chính xác về mặt toán học. Nếu đề bài là hình chóp S.ABCD có đáy là hình vuông, các cạnh AB, BC, CD, DA phải bằng nhau."
 )
 
 
@@ -256,63 +261,120 @@ def _build_sphere(r: float) -> dict:
 
 def _local_geometry_fallback(text: str) -> dict:
     """
-    Giải hình học cục bộ: phân tích văn bản tiếng Việt để nhận dạng hình
-    và tạo tọa độ 3D mà không cần Gemini API.
+    Giải hình học cục bộ nâng cao: phân tích văn bản tiếng Việt để nhận dạng hình
+    và TÍNH TOÁN CÁC ĐIỂM PHỤ (trung điểm, tâm, giao điểm).
     """
-    t = (text or "").lower()
+    t = (text or "").lower().replace("  ", " ")
 
-    # ── Nhận dạng số đỉnh đáy từ ký hiệu hình học (S.ABCD → 4, S.ABC → 3) ──
+    # 1. Nhận dạng hình cơ bản
     vertex_match = re.search(r'[a-z]\.[a-z]{2,}', t)
     base_vertex_count = len(vertex_match.group(0)) - 2 if vertex_match else 4
     is_tam_giac = (base_vertex_count == 3) or ("tam giác" in t)
-
-    is_chop = "chóp" in t or "chop" in t
-    is_lang_tru = "lăng trụ" in t or "lang tru" in t
-    is_non = "nón" in t or "cone" in t
-    is_cau = "cầu" in t or "sphere" in t
-
-    # ── Phát hiện SA⊥(ABCD) — hình chóp vuông ────────────────────────────────
-    is_right_angle_sa = bool(
-        re.search(r'sa\s*[⊥_]\s*[\(\[]?[abcd]', t) or
-        re.search(r'sa\s+vuông\s+góc', t) or
-        re.search(r'sa\s+vuong\s+goc', t)
-    )
-
-    # ── Trích xuất kích thước ─────────────────────────────────────────────────
-    a = _extract_number(text, ["cạnh", "canh", "a =", "a=", "cạnh đáy", "bán kính", "r ="]) or 6.0
-
-    # SA=số → dùng làm chiều cao; SA=a → chiều cao bằng cạnh đáy
-    sa_match = re.search(r'sa\s*=\s*([a-z0-9]+(?:[.,]\d+)?)', t)
-    if sa_match:
-        raw = sa_match.group(1)
-        try:
-            h = float(raw.replace(",", "."))
-        except ValueError:
-            h = a
-    else:
-        h = _extract_number(text, ["chiều cao", "chieu cao", "h =", "h="]) or a
-
-    logger.info(
-        f"[LocalFallback] text='{text[:60]}' "
-        f"is_chop={is_chop} is_lang_tru={is_lang_tru} is_non={is_non} is_cau={is_cau} a={a} h={h}"
-    )
-
-    if is_cau:
-        return _build_sphere(a/2)
-    if is_non:
-        return _build_cone(a/2, h)
-    if is_chop:
-        if is_right_angle_sa:
-            if is_tam_giac: return _build_right_triangular_pyramid(a, h)
-            return _build_right_pyramid(a, h)
-        if is_tam_giac: return _build_triangular_pyramid(a, h)
-        return _build_pyramid(a, h)
-    if is_lang_tru:
-        if is_tam_giac: return _build_triangular_prism(a, h)
-        return _build_prism(a, h)
     
-    return _build_pyramid(a, h)
+    # Nhận diện SA vuông góc (hỗ trợ nhiều loại ký tự và cách viết)
+    is_right_sa = bool(
+        re.search(r'sa\s*(vuông góc|vuong goc|⊥|perp|_|_|perp|⊥)', t) or
+        re.search(r'sa\s*[⊥_]\s*[\(\[]?[abcd]', t)
+    )
+    
+    a = _extract_number(text, ["cạnh", "canh", "a =", "a=", "cạnh đáy", "bán kính", "r ="]) or 4.0
+    h = _extract_number(text, ["chiều cao", "chieu cao", "sa =", "sa=", "h =", "h="]) or 5.0
 
+    # 2. Sinh khung hình chính
+    if "lăng trụ" in t or "lang tru" in t:
+        shape = _build_triangular_prism(a, h) if is_tam_giac else _build_prism(a, h)
+    elif "nón" in t or "cone" in t:
+        shape = _build_cone(a/2, h)
+    elif re.search(r"\bhình cầu\b|\bmặt cầu\b|\bsphere\b", t):
+        shape = _build_sphere(a/2)
+    else: # Mặc định là chóp
+        if is_right_sa:
+            shape = _build_right_triangular_pyramid(a, h) if is_tam_giac else _build_right_pyramid(a, h)
+        else:
+            shape = _build_triangular_pyramid(a, h) if is_tam_giac else _build_pyramid(a, h)
+
+    # 3. Phân tích điểm phụ (Advanced Parsing)
+    verts = list(shape["vertices"])
+    labels = list(shape["vertex_labels"])
+    v_edges = list(shape["visible_edges"])
+    h_edges = list(shape["hidden_edges"])
+    
+    label_to_idx = {l: i for i, l in enumerate(labels)}
+
+    # a. Tìm Tâm O (Trung điểm đường chéo đáy)
+    if "o là tâm" in t or "gọi o" in t or "tâm o" in t:
+        if "A" in label_to_idx and "C" in label_to_idx:
+            v1, v2 = verts[label_to_idx["A"]], verts[label_to_idx["C"]]
+            o_coord = [(v1[0]+v2[0])/2, (v1[1]+v2[1])/2, (v1[2]+v2[2])/2]
+            verts.append(o_coord)
+            labels.append("O")
+            idx_o = len(verts) - 1
+            label_to_idx["O"] = idx_o
+            
+            # Vẽ 2 đường chéo đáy (nét đứt) để xác định tâm O
+            h_edges.append([label_to_idx["A"], label_to_idx["C"]])
+            if "B" in label_to_idx and "D" in label_to_idx:
+                h_edges.append([label_to_idx["B"], label_to_idx["D"]])
+            
+            # Nối SO (nét đứt)
+            if "S" in label_to_idx: h_edges.append([label_to_idx["S"], idx_o])
+
+    # b. Tìm Trung điểm (M, N, K, I, J...)
+    # Dùng regex quét trực tiếp (Hỗ trợ dấu ' và từ khóa 'cạnh', 'đoạn')
+    mid_matches = re.finditer(r"([a-z]'?)\s+(?:là\s+)?trung\s+điểm\s+(?:của\s+)?(?:đoạn\s+|cạnh\s+)?([a-z']{2,4})", t)
+    for match in mid_matches:
+        m_name = match.group(1).upper()
+        segment = match.group(2).upper()
+        
+        # Tách đoạn thẳng thành 2 điểm (VD: AA' -> A và A')
+        pts = re.findall(r"[A-Z]'?", segment)
+        if len(pts) == 2:
+            p1, p2 = pts[0], pts[1]
+            if p1 in label_to_idx and p2 in label_to_idx and m_name not in label_to_idx:
+                v1, v2 = verts[label_to_idx[p1]], verts[label_to_idx[p2]]
+                m_coord = [(v1[0]+v2[0])/2, (v1[1]+v2[1])/2, (v1[2]+v2[2])/2]
+                verts.append(m_coord)
+                labels.append(m_name)
+                label_to_idx[m_name] = len(verts) - 1
+                logger.info(f"[LocalFallback] Thêm trung điểm {m_name} của {segment}")
+
+    # c. Vẽ các đoạn thẳng phụ (AM, BN, SO, MN, AA'...)
+    # Tìm tất cả các cụm 2 nhãn điểm viết hoa đứng gần nhau (VD: "đoạn AM", "đường MN")
+    all_labels_in_text = re.findall(r"[A-Z]'?", t.upper())
+    for i in range(len(all_labels_in_text)-1):
+        p1, p2 = all_labels_in_text[i], all_labels_in_text[i+1]
+        if p1 in label_to_idx and p2 in label_to_idx and p1 != p2:
+            idx1, idx2 = label_to_idx[p1], label_to_idx[p2]
+            if not any({idx1, idx2} == set(e) for e in v_edges + h_edges):
+                v_edges.append([idx1, idx2])
+
+    # Tìm thêm các cặp dính liền như "AM", "MN", "AA'"
+    joined_matches = re.finditer(r"([A-Z]'?)([A-Z]'?)", t.upper().replace(" ", ""))
+    for match in joined_matches:
+        p1, p2 = match.group(1), match.group(2)
+        if p1 in label_to_idx and p2 in label_to_idx and p1 != p2:
+            idx1, idx2 = label_to_idx[p1], label_to_idx[p2]
+            if not any({idx1, idx2} == set(e) for e in v_edges + h_edges):
+                v_edges.append([idx1, idx2])
+
+    # d. Giao điểm P (Chỉ dựng khi đề bài thực sự có điểm P)
+    # Dùng regex tìm chữ P đứng độc lập
+    if re.search(r'\bP\b', t.upper()) and ("GIAO" in t.upper() or ("AM" in t.upper() and "BN" in t.upper())):
+        if "A" in label_to_idx and "B" in label_to_idx and "P" not in label_to_idx:
+            # Ước lượng vị trí P
+            va = verts[label_to_idx["A"]]
+            verts.append([va[0] + 0.8, va[1] + 0.4, va[2]])
+            labels.append("P")
+            label_to_idx["P"] = len(verts) - 1
+            v_edges.append([label_to_idx["A"], label_to_idx["P"]])
+            v_edges.append([label_to_idx["B"], label_to_idx["P"]])
+
+    logger.info(f"[LocalFallback] Dựng thành công {len(verts)} đỉnh: {labels}")
+    return {
+        "vertices": verts, "faces": shape["faces"],
+        "visible_edges": v_edges, "hidden_edges": h_edges,
+        "vertex_labels": labels
+    }
 
 
 # ─── Service ─────────────────────────────────────────────────────────────────
@@ -320,45 +382,81 @@ def _local_geometry_fallback(text: str) -> dict:
 class GeometryGeneratorService:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
+        self.client_configured = False
+        self.available_models = []
+        
+        # Model mặc định
+        self.primary_model = "gemini-2.0-flash"
+        self.fallback_models = ["gemini-1.5-flash", "gemini-1.5-pro"]
+        
         if not self.api_key:
-            logger.warning("GEMINI_API_KEY chưa được cấu hình. GeometryGenerator sẽ trả về lỗi.")
-            self.client = None
+            logger.warning("GEMINI_API_KEY chưa được cấu hình.")
         else:
             try:
-                self.client = genai.Client(api_key=self.api_key)
-                logger.info("GeometryGeneratorService: Gemini Client đã khởi tạo thành công.")
+                genai.configure(api_key=self.api_key)
+                self.client_configured = True
+                # Tự động tìm các model khả dụng để tránh lỗi 404
+                self._refresh_available_models()
+                logger.info("GeometryGeneratorService: Đã cấu hình và cập nhật danh sách model.")
             except Exception as e:
-                logger.error(f"Không thể khởi tạo Gemini Client: {e}")
-                self.client = None
+                logger.error(f"Không thể cấu hình Gemini: {e}")
 
-        # Model chính – sử dụng bản 2.0-flash ổn định
-        self.primary_model = "gemini-2.0-flash"
-
-        # Danh sách model dự phòng theo thứ tự ưu tiên (nhẹ hơn, ít quá tải hơn)
-        self.fallback_models = [
-            "gemini-2.0-flash",
-            "gemini-1.5-flash-8b",
-        ]
-
-    # ── Private: gọi một model cụ thể, có @retry bọc ngoài ──────────────────
+    def _refresh_available_models(self):
+        """Quét danh sách các model thực tế từ API Key."""
+        try:
+            models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            # Ưu tiên các bản mới nhất có trong danh sách của user (3.1 -> 3.0 -> 2.5 -> 2.0)
+            priority_keywords = [
+                "gemini-3.1-flash", 
+                "gemini-3.1-pro",
+                "gemini-3-flash", 
+                "gemini-3-pro",
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
+                "gemini-2.0-flash",
+                "gemini-flash-latest"
+            ]
+            
+            sorted_models = []
+            for p in priority_keywords:
+                # Tìm model chứa từ khóa (ưu tiên bản preview/lite nếu có)
+                matches = [m for m in models if p in m]
+                for match in matches:
+                    if match not in sorted_models:
+                        sorted_models.append(match)
+            
+            # Thêm nốt các model gemini còn lại
+            for m in models:
+                if m not in sorted_models and "gemini" in m:
+                    sorted_models.append(m)
+            
+            if sorted_models:
+                self.available_models = sorted_models
+                self.primary_model = sorted_models[0]
+                self.fallback_models = sorted_models[1:5] # Thử 4 model dự phòng tiếp theo
+                logger.info(f"Đã cập nhật danh sách model ưu tiên: {self.available_models[:5]}")
+        except Exception as e:
+            logger.warning(f"Không thể liệt kê models: {e}. Dùng mặc định.")
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(1), # Không retry trên 1 model, đổi model khác luôn cho nhanh
         retry=retry_if_exception(_is_retryable),
-        reraise=True,  # Ném exception gốc sau khi hết lần retry
+        reraise=True,
     )
-    def _call_model(self, model_name: str, parts: list, config) -> str:
-        """
-        Gọi Gemini API với một model cụ thể.
-        Decorator @retry tự động thử lại tối đa 3 lần nếu gặp lỗi 503/429,
-        với khoảng chờ lũy thừa: lần 1 → 2s, lần 2 → 4s, lần 3 → 8s.
-        """
-        logger.info(f"→ Đang gọi model [{model_name}]...")
-        response = self.client.models.generate_content(
-            model=model_name,
-            contents=parts,
-            config=config,
+    def _call_model(self, model_name: str, contents: list) -> str:
+        logger.info(f"→ Đang thử model [{model_name}]...")
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=SYSTEM_INSTRUCTION
+        )
+        
+        response = model.generate_content(
+            contents,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1,
+                top_p=0.9,
+                max_output_tokens=2048,
+            )
         )
         return response.text.strip()
 
@@ -370,75 +468,71 @@ class GeometryGeneratorService:
         image_bytes: bytes | None = None,
         mime_type: str = "image/jpeg",
     ) -> dict:
-        """
-        Nhận văn bản đề bài và/hoặc bytes ảnh.
-        Trả về dict với keys: vertices, faces, visible_edges, hidden_edges, vertex_labels.
+        if not self.client_configured:
+            raise HTTPException(status_code=500, detail="Gemini API chưa được cấu hình.")
 
-        Cơ chế lỗi:
-          - Tầng 1: Thử primary_model, retry tối đa 3 lần nếu 503/429.
-          - Tầng 2: Lần lượt thử từng fallback_model (cũng có retry).
-          - Tầng 3: Raise HTTPException(503) nếu tất cả đều thất bại.
-        """
-        if not self.client:
-            raise HTTPException(
-                status_code=500,
-                detail="Server chưa cấu hình GEMINI_API_KEY hoặc khởi tạo client bị lỗi.",
-            )
+        # Xây dựng danh sách contents cho prompt multimodal
+        contents = []
 
-        # Xây dựng danh sách parts cho prompt multimodal
-        parts: list = []
-
-        if text and text.strip():
-            parts.append(types.Part.from_text(text=text.strip()))
+        final_text = text.strip() if text else ""
+        if image_bytes and not final_text:
+            final_text = "Hãy phân tích đề bài toán hình học trong ảnh này và tạo mô hình 3D JSON theo đúng yêu cầu."
+        
+        if final_text:
+            contents.append(final_text)
 
         if image_bytes:
-            parts.append(
-                types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
-            )
+            contents.append({
+                "mime_type": mime_type,
+                "data": image_bytes
+            })
 
-        if not parts:
-            raise HTTPException(
-                status_code=400,
-                detail="Yêu cầu phải có ít nhất văn bản đề bài hoặc ảnh.",
-            )
+        if not contents:
+            raise HTTPException(status_code=400, detail="Cần có đề bài hoặc ảnh.")
 
-        config = types.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION,
-            temperature=0.2,
-        )
-
-        # ── Tầng 1: Model chính (có retry bên trong _call_model) ─────────────
+        # ── Tầng 1: Model chính ─────────────────────────────────────────────
         raw_text: str | None = None
         last_error: Exception | None = None
 
         try:
-            raw_text = self._call_model(self.primary_model, parts, config)
+            raw_text = self._call_model(self.primary_model, contents)
             logger.info(f"✓ Model chính [{self.primary_model}] phản hồi thành công.")
         except Exception as primary_error:
-            logger.warning(
-                f"✗ Model chính [{self.primary_model}] thất bại sau 3 lần retry. "
-                f"Lỗi: {primary_error}"
-            )
+            logger.warning(f"✗ Model chính [{self.primary_model}] thất bại: {primary_error}")
             last_error = primary_error
 
-            # ── Tầng 2: Lần lượt thử từng model dự phòng ─────────────────────
+            # ── Tầng 2: Model dự phòng ──────────────────────────────────────
             for fallback in self.fallback_models:
                 try:
-                    raw_text = self._call_model(fallback, parts, config)
+                    raw_text = self._call_model(fallback, contents)
                     logger.info(f"✓ Model dự phòng [{fallback}] phản hồi thành công.")
-                    break  # Thoát ngay khi có model thành công
+                    break
                 except Exception as fb_error:
-                    logger.warning(f"✗ Model dự phòng [{fallback}] cũng thất bại: {fb_error}")
+                    logger.warning(f"✗ Model dự phòng [{fallback}] thất bại: {fb_error}")
                     last_error = fb_error
 
-        # ── Tầng 3: Tất cả model đều thất bại → Dùng bộ giải cục bộ ──────────
+        # ── Tầng 3: Tất cả thất bại ─────────────────────────────────────────
         if raw_text is None:
-            logger.warning(f"Tất cả models đều thất bại. Dùng bộ giải hình học cục bộ. Lỗi: {last_error}")
-            return _local_geometry_fallback(text)
+            logger.warning("Tất cả models đều thất bại. Dùng bộ giải cục bộ.")
+            return _local_geometry_fallback(final_text)
 
-        # ── Parse & validate JSON response ────────────────────────────────────
-        # Làm sạch markdown nếu model vẫn cố gắng wrap code block
-        cleaned = re.sub(r"```(?:json)?\s*", "", raw_text)
+
+
+        # Parse & validate JSON response
+        logger.info(f"Phản hồi thô từ Gemini: {raw_text[:200]}...")
+
+        # Trích xuất JSON từ chuỗi (tìm cặp ngoặc nhọn {} bao quanh nhất)
+        try:
+            json_match = re.search(r"(\{.*\})", raw_text, re.DOTALL)
+            if json_match:
+                cleaned = json_match.group(1)
+            else:
+                cleaned = raw_text
+        except Exception:
+            cleaned = raw_text
+
+        # Làm sạch markdown
+        cleaned = re.sub(r"```(?:json)?\s*", "", cleaned)
         cleaned = cleaned.replace("```", "").strip()
 
         try:

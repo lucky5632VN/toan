@@ -20,8 +20,7 @@ import { Wand2 } from 'lucide-react';
 
 function App() {
   useGeometryAPI();
-  const { isLoading, error, currentTab } = useGeometryStore();
-  const [showGenerator, setShowGenerator] = useState(false);
+  const { isLoading, error, currentTab, isGeneratorOpen, setIsGeneratorOpen } = useGeometryStore();
   
 
 
@@ -55,7 +54,7 @@ function App() {
               )}
               <Scene />
               <button
-                onClick={() => setShowGenerator(true)}
+                onClick={() => setIsGeneratorOpen(true)}
                 style={{
                   position: 'absolute', top: '1rem', left: '50%', transform: 'translateX(-50%)',
                   zIndex: 100, background: 'linear-gradient(135deg, #1f6feb, #a371f7)',
@@ -98,7 +97,7 @@ function App() {
       <Header />
       <main style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {renderContent()}
-        {showGenerator && <GeometryGenerator onClose={() => setShowGenerator(false)} />}
+        {isGeneratorOpen && <GeometryGenerator onClose={() => setIsGeneratorOpen(false)} />}
         <AITutorPanel />
       </main>
     </>
