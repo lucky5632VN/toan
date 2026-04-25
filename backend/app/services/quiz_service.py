@@ -148,68 +148,11 @@ class QuizService:
         self._quiz_cache = {}
 
     async def generate_quiz(self, shape_type: str, params: Dict[str, Any]) -> dict:
-        if not API_KEY:
-            self.logger.warning("Không có API Key, sử dụng ngân hàng câu hỏi dự phòng.")
-            return get_fallback_question(shape_type)
-
-        system_instruction = "Bạn là giáo viên Toán. Dựa vào thông số hình học 3D hiện tại mà người dùng đang xem, hãy tạo 1 câu hỏi trắc nghiệm tính toán (thể tích, diện tích, góc, khoảng cách). Trả về cấu trúc JSON gồm: question, options, correct_answer, explanation."
-
-        cache_key = f"{shape_type}_{json.dumps(params, sort_keys=True)}"
-        if cache_key in self._quiz_cache:
-            self.logger.info(f"Using cached quiz for {cache_key}")
-            return self._quiz_cache[cache_key]
-
-        prompt = f"""
-        [HỆ THỐNG] {system_instruction}
-        
-        [CHỦ ĐỀ ĐỀ BÀI]
-        Loại hình khối: {shape_type}
-        Tham số kích thước: {params}
-        
-        Hãy sinh bài tập trắc nghiệm toán học tương ứng với khối hình này. Trả về định dạng JSON thuần túy.
         """
-
-        max_retries = 3
-        retry_delay = 1
-
-        # Tầng 1: Model chính
-        model = genai.GenerativeModel(self.primary_model_name)
-        for attempt in range(max_retries):
-            try:
-                response = model.generate_content(
-                    prompt,
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                return self._parse_quiz_response(response, cache_key)
-            except Exception as e:
-                error_msg = str(e)
-                if any(x in error_msg.lower() for x in ["429", "503", "exhausted", "demand", "unavailable"]):
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay * (attempt + 1))
-                        continue
-                self.logger.error(f"Model chính [{self.primary_model_name}] thất bại: {e}")
-                break
-
-        # Tầng 2: Model dự phòng
-        try:
-            self.logger.info(f"→ Thử model dự phòng [{self.fallback_model_name}]...")
-            fb_model = genai.GenerativeModel(self.fallback_model_name)
-            response = fb_model.generate_content(
-                prompt,
-                generation_config={"response_mime_type": "application/json"}
-            )
-            return self._parse_quiz_response(response, cache_key)
-        except Exception as e:
-            self.logger.error(f"Tất cả models đều thất bại: {e}")
-            return get_fallback_question(shape_type)
-
-    def _parse_quiz_response(self, response, cache_key: str) -> dict:
-        raw_text = response.text
-        import re
-        cleaned = re.sub(r"```(?:json)?\s*", "", raw_text)
-        cleaned = cleaned.replace("```", "").strip()
-        result = json.loads(cleaned)
-        self._quiz_cache[cache_key] = result
-        return result
+        Lấy bài tập trực tiếp từ kho câu hỏi đã biên soạn (Question Bank) 
+        để đảm bảo tính chính xác cao và tối ưu hoá tốc độ phản hồi.
+        """
+        self.logger.info(f"Lấy câu hỏi từ kho bài tập cho chủ đề: {shape_type}")
+        return get_fallback_question(shape_type)
 
 quiz_service = QuizService()
