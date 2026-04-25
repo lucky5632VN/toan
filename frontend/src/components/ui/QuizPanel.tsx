@@ -11,7 +11,7 @@ interface QuizData {
 }
 
 const TOPICS = [
-  { label: 'Theo hình đang hiển thị', value: 'current' },
+  { label: 'Tất cả', value: 'all' },
   { label: 'Hình Chóp', value: 'pyramid' },
   { label: 'Hình Lăng Trụ', value: 'prism' },
   { label: 'Khối Cầu', value: 'sphere' },
@@ -27,11 +27,11 @@ const QuizPanel: React.FC = () => {
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
   const [total, setTotal] = useState(0);
-  const [selectedTopic, setSelectedTopic] = useState('current');
+  const [selectedTopic, setSelectedTopic] = useState('all');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const getShapeForTopic = () => {
-    if (selectedTopic === 'current') return { shape_type: selectedShape, params: shapeParams };
+    if (selectedTopic === 'all') return { shape_type: 'all', params: {} };
     return { shape_type: selectedTopic, params: {} };
   };
 
