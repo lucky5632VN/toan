@@ -136,6 +136,11 @@ function useThreeRenderer(
       if (obj.userData.isGeometry) toRemove.push(obj);
     });
     toRemove.forEach((obj) => {
+      // Gỡ DOM element của CSS2DObject để tránh bị "bóng ma" nhãn chữ đọng lại trên màn hình
+      const anyObj = obj as any;
+      if (anyObj.isCSS2DObject && anyObj.element && anyObj.element.parentNode) {
+        anyObj.element.parentNode.removeChild(anyObj.element);
+      }
       if (obj.parent) obj.parent.remove(obj);
     });
 
@@ -350,7 +355,7 @@ const GeometryGenerator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       const errorMsg = e.response?.data?.detail || e.message;
       setError(
         e.code === 'ERR_NETWORK'
-          ? '⚠️ Không thể kết nối Backend (Cổng 8000). Kiểm tra server FastAPI.'
+          ? '⚠️ Không thể kết nối Backend. Vui lòng kiểm tra cấu hình VITE_API_BASE_URL hoặc đảm bảo server FastAPI đang chạy.'
           : `Lỗi: ${errorMsg}`
       );
     } finally {
