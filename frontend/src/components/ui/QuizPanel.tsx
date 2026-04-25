@@ -20,7 +20,6 @@ const TOPICS = [
 ];
 
 const QuizPanel: React.FC = () => {
-  const { selectedShape, shapeParams } = useGeometryStore();
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
