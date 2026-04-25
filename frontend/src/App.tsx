@@ -15,7 +15,6 @@ import QuizPanel from './components/ui/QuizPanel';
 
 import { useGeometryAPI } from './hooks/useGeometryAPI';
 import { useGeometryStore } from './store/useGeometryStore';
-import { useState } from 'react';
 import { Wand2 } from 'lucide-react';
 
 function App() {
