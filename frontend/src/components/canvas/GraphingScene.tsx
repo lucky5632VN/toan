@@ -54,7 +54,7 @@ const ExpressionLayer: React.FC<{ formula: string; color: string; x0: number; zo
       const halfH = (size.height / zoom);
       
       const range = Math.max(halfW, halfH) * 2.2;
-      const baseRes = 120; // Tăng độ phân giải cho hàm ẩn
+      const baseRes = 250; // Tăng mạnh độ phân giải để xóa vết nứt
       const step = range / baseRes;
       
       const startX = centerX - range / 2;
@@ -126,7 +126,7 @@ const ExpressionLayer: React.FC<{ formula: string; color: string; x0: number; zo
           if (v4 > 0) caseIndex |= 8;
 
           if (caseIndex !== 0 && caseIndex !== 15) {
-            const subRes = 4;
+            const subRes = 6; // Tăng độ phân giải con cho các vùng nhạy cảm
             const subStep = step / subRes;
             for (let sj = 0; sj < subRes; sj++) {
               for (let si = 0; si < subRes; si++) {
