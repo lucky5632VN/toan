@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, CheckCircle2, XCircle, Loader2, RefreshCw, Info, Trophy, Target, BookOpen } from 'lucide-react';
-import { useGeometryStore } from '../../store/useGeometryStore';
 import api from '../../api/axios';
 
 interface QuizData {
